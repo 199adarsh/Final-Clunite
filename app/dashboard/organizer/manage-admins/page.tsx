@@ -31,8 +31,7 @@ import Link from "next/link"
 export default function ManageAdminsPage() {
   const { user: authUser } = useAuth()
   const [loading, setLoading] = useState(true)
-  const [userClubs, setUserClubs] = useState<any[]>([])
-  const [selectedClubId, setSelectedClubId] = useState<string>("")
+  const [currentClub, setCurrentClub] = useState<any>(null)
   const [admins, setAdmins] = useState<any[]>([])
   const [isOwner, setIsOwner] = useState(false)
   const [newAdminEmail, setNewAdminEmail] = useState("")
@@ -40,55 +39,56 @@ export default function ManageAdminsPage() {
 
   useEffect(() => {
     if (authUser) {
-      loadUserClubs()
+      loadCurrentClub()
     }
   }, [authUser])
 
-  useEffect(() => {
-    if (selectedClubId) {
-      loadClubAdmins()
-    }
-  }, [selectedClubId])
-
-  const loadUserClubs = async () => {
+  const loadCurrentClub = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      
+      // Get the club ID from sessionStorage (set when creating/selecting a club)
+      const storedClubId = sessionStorage.getItem('selectedClubId')
+      
+      if (!storedClubId) {
+        toast.error('No club selected. Please create or select a club first.')
+        setLoading(false)
+        return
+      }
+
+      // Verify user is an admin of this club
+      const { data: membership, error: membershipError } = await supabase
         .from('club_memberships')
         .select(`
           *,
           club:clubs(*)
         `)
         .eq('user_id', authUser!.id)
+        .eq('club_id', storedClubId)
         .eq('role', 'admin')
+        .single()
 
-      if (error) throw error
-
-      setUserClubs((data || []).map((m: any) => m.club))
-      if (data && data.length > 0) {
-        setSelectedClubId(data[0].club_id)
+      if (membershipError || !membership) {
+        toast.error('You are not an admin of this club')
+        setLoading(false)
+        return
       }
+
+      setCurrentClub(membership.club)
+      setIsOwner(membership.is_owner || false)
+      
+      // Load admins for this club
+      loadClubAdmins(storedClubId)
     } catch (err: any) {
-      console.error('Error loading clubs:', err)
-      toast.error('Failed to load clubs')
-    } finally {
+      console.error('Error loading club:', err)
+      toast.error('Failed to load club data')
       setLoading(false)
     }
   }
 
-  const loadClubAdmins = async () => {
+  const loadClubAdmins = async (clubId: string) => {
     try {
       setLoading(true)
-      
-      // Check if current user is owner
-      const { data: myMembership } = await supabase
-        .from('club_memberships')
-        .select('is_owner')
-        .eq('user_id', authUser!.id)
-        .eq('club_id', selectedClubId)
-        .single()
-
-      setIsOwner(myMembership?.is_owner || false)
 
       // Load all admins
       const { data, error } = await supabase
@@ -97,7 +97,7 @@ export default function ManageAdminsPage() {
           *,
           user:users(*)
         `)
-        .eq('club_id', selectedClubId)
+        .eq('club_id', clubId)
         .eq('role', 'admin')
         .order('is_owner', { ascending: false })
         .order('joined_at', { ascending: true })
@@ -158,12 +158,19 @@ export default function ManageAdminsPage() {
         return
       }
 
+      const clubId = sessionStorage.getItem('selectedClubId')
+      if (!clubId) {
+        toast.error('No club selected')
+        setAdding(false)
+        return
+      }
+
       // Add as admin
       const { error: addError } = await supabase
         .from('club_memberships')
         .insert({
           user_id: userData.id,
-          club_id: selectedClubId,
+          club_id: clubId,
           role: 'admin',
           is_owner: false,
           verified_via_pin: false,
@@ -181,7 +188,7 @@ export default function ManageAdminsPage() {
 
       toast.success(`${userData.full_name || newAdminEmail} added as admin!`)
       setNewAdminEmail('')
-      loadClubAdmins()
+      loadClubAdmins(clubId)
     } catch (err: any) {
       console.error('Error adding admin:', err)
       toast.error('Failed to add admin')
@@ -200,24 +207,27 @@ export default function ManageAdminsPage() {
       return
     }
 
+    const clubId = sessionStorage.getItem('selectedClubId')
+    if (!clubId) return
+
     try {
       const { error } = await supabase
         .from('club_memberships')
         .delete()
         .eq('user_id', adminId)
-        .eq('club_id', selectedClubId)
+        .eq('club_id', clubId)
 
       if (error) throw error
 
       toast.success(`${adminName} removed as admin`)
-      loadClubAdmins()
+      loadClubAdmins(clubId)
     } catch (err: any) {
       console.error('Error removing admin:', err)
       toast.error('Failed to remove admin')
     }
   }
 
-  if (loading && userClubs.length === 0) {
+  if (loading && !currentClub) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
@@ -225,14 +235,14 @@ export default function ManageAdminsPage() {
     )
   }
 
-  if (userClubs.length === 0) {
+  if (!currentClub && !loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-2xl mx-auto">
           <Card className="border-2 border-yellow-200 bg-yellow-50">
             <CardContent className="p-6 text-center">
-              <p className="text-yellow-900 font-medium mb-2">You are not an admin of any clubs</p>
-              <p className="text-yellow-700 text-sm mb-4">Create a club or verify with a PIN first</p>
+              <p className="text-yellow-900 font-medium mb-2">No club selected</p>
+              <p className="text-yellow-700 text-sm mb-4">Please create a club or select one from the event management hub</p>
               <Link href="/dashboard/organizer/create-club">
                 <Button className="bg-yellow-600 hover:bg-yellow-700">
                   Create Your First Club
@@ -244,8 +254,6 @@ export default function ManageAdminsPage() {
       </div>
     )
   }
-
-  const selectedClub = userClubs.find(c => c.id === selectedClubId)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/20 p-6">
@@ -263,7 +271,7 @@ export default function ManageAdminsPage() {
                   </div>
                   <h1 className="text-4xl font-black">Manage Admins</h1>
                 </div>
-                <p className="text-emerald-50 text-lg">Add or remove club administrators for {selectedClub?.name}</p>
+                <p className="text-emerald-50 text-lg">Add or remove club administrators for {currentClub?.name}</p>
               </div>
               <Link href="/dashboard/organizer/host">
                 <Button className="bg-white/20 hover:bg-white/30 text-white border border-white/30 font-semibold px-6 py-3 rounded-xl backdrop-blur-sm hover:scale-105 transition-all duration-300">
@@ -274,28 +282,31 @@ export default function ManageAdminsPage() {
           </div>
         </div>
 
-        {/* Club Selector */}
+        {/* Current Club Info */}
         <Card className="border-0 shadow-xl bg-white">
           <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b">
             <CardTitle className="flex items-center gap-2 text-emerald-900">
               <Shield className="h-5 w-5" />
-              Select Club
+              Managing Club
             </CardTitle>
-            <CardDescription>Choose which club to manage administrators</CardDescription>
+            <CardDescription>You are managing administrators for this club</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
-            <Select value={selectedClubId} onValueChange={setSelectedClubId}>
-              <SelectTrigger className="w-full h-12 border-2 border-emerald-200 focus:border-emerald-500">
-                <SelectValue placeholder="Select a club" />
-              </SelectTrigger>
-              <SelectContent>
-                {userClubs.map((club) => (
-                  <SelectItem key={club.id} value={club.id}>
-                    {club.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border-2 border-emerald-200">
+              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                <Users className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-gray-900">{currentClub?.name}</h3>
+                <p className="text-sm text-gray-600">{currentClub?.category} • {currentClub?.college}</p>
+              </div>
+              {isOwner && (
+                <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500">
+                  <Crown className="h-3 w-3 mr-1" />
+                  Owner
+                </Badge>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -367,7 +378,7 @@ export default function ManageAdminsPage() {
               Current Admins ({admins.length}/5)
             </CardTitle>
             <CardDescription>
-              People who can manage {selectedClub?.name}
+              People who can manage {currentClub?.name}
             </CardDescription>
           </CardHeader>
           <CardContent>
