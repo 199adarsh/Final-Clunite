@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,12 +25,17 @@ import {
   Mail,
   Phone,
   MapPin,
+  Target,
 } from "lucide-react"
 import Link from "next/link"
 
 export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [counter, setCounter] = useState(0)
+  const counterRef = useRef<HTMLDivElement>(null)
+  const [hasAnimated, setHasAnimated] = useState(false)
+  const [activeTab, setActiveTab] = useState("students")
 
   useEffect(() => {
     const handleScroll = () => {
@@ -39,6 +44,38 @@ export default function LandingPage() {
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  // Animated counter effect
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !hasAnimated) {
+          setHasAnimated(true)
+          let start = 0
+          const end = 50000
+          const duration = 2000
+          const increment = end / (duration / 16)
+          
+          const timer = setInterval(() => {
+            start += increment
+            if (start >= end) {
+              setCounter(end)
+              clearInterval(timer)
+            } else {
+              setCounter(Math.floor(start))
+            }
+          }, 16)
+        }
+      },
+      { threshold: 0.5 }
+    )
+
+    if (counterRef.current) {
+      observer.observe(counterRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [hasAnimated])
 
   const navItems = [
     { name: "Features", href: "#features" },
@@ -52,37 +89,37 @@ export default function LandingPage() {
       icon: Calendar,
       title: "Smart Event Discovery",
       description: "AI-powered recommendations help you find events that match your interests and skill level.",
-      color: "from-blue-500 to-blue-600",
+      color: "bg-blue-600",
     },
     {
       icon: Users,
       title: "Team Formation",
       description: "Connect with like-minded students and form teams for competitions and projects.",
-      color: "from-green-500 to-green-600",
+      color: "bg-emerald-600",
     },
     {
       icon: Trophy,
       title: "Achievement Tracking",
       description: "Earn certificates, badges, and build your portfolio with every event you participate in.",
-      color: "from-yellow-500 to-yellow-600",
+      color: "bg-amber-600",
     },
     {
       icon: BarChart3,
       title: "Analytics Dashboard",
       description: "Track your progress, see your growth, and get insights into your learning journey.",
-      color: "from-purple-500 to-purple-600",
+      color: "bg-violet-600",
     },
     {
       icon: Shield,
       title: "Verified Events",
       description: "All events are verified by our team to ensure quality and authenticity.",
-      color: "from-red-500 to-red-600",
+      color: "bg-rose-600",
     },
     {
       icon: Globe,
       title: "Multi-Campus Network",
       description: "Connect with students from 200+ colleges across India and participate in inter-college events.",
-      color: "from-indigo-500 to-indigo-600",
+      color: "bg-cyan-600",
     },
   ]
 
@@ -219,73 +256,62 @@ export default function LandingPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-white overflow-hidden">
-      {/* Modern Header with Clunite Branding */}
+    <div className="min-h-screen bg-[#FBF7F4] overflow-hidden">
+      {/* Zapier-style Header */}
       <header
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-700 ease-out ${
-          isScrolled ? "bg-white/70 backdrop-blur-2xl shadow-2xl shadow-slate-900/10" : "bg-transparent"
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
+          isScrolled ? "bg-white/95 backdrop-blur-sm shadow-sm" : "bg-transparent"
         }`}
       >
-        <div className="container mx-auto px-6">
-          <div
-            className={`flex items-center justify-between h-20 transition-all duration-700 ease-out transform ${
-              isScrolled
-                ? "bg-white/95 backdrop-blur-2xl border border-slate-200/60 rounded-3xl shadow-2xl shadow-slate-900/10 px-8 my-4 scale-[0.98] hover:scale-100"
-                : "scale-100"
-            }`}
-          >
-            {/* Clunite Logo */}
-            <Link href="/" className="flex items-center space-x-3 group">
-              <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-3">
-                  <span className="text-white font-black text-lg group-hover:scale-110 transition-transform duration-300">
-                    C
-                  </span>
+        <div className="w-full px-6">
+          <div className="flex items-center justify-between h-20">
+            {/* Left side - Logo + Nav at extreme left */}
+            <div className="flex items-center space-x-8">
+              {/* Simple Professional Logo */}
+              <Link href="/" className="flex items-center space-x-2 group">
+                <div className="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105">
+                  <span className="text-white font-bold text-xl">C</span>
                 </div>
-                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-2xl blur opacity-20 group-hover:opacity-60 transition-all duration-500"></div>
-              </div>
-              <div className="hidden sm:block">
-                <span className="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition-all duration-300">
+                <span className="text-xl font-bold text-gray-900">
                   Clunite
                 </span>
-                <div className="text-xs text-slate-500 font-bold tracking-wide group-hover:text-purple-500 transition-colors duration-300">
-                  UNITE • CREATE • CELEBRATE
-                </div>
-              </div>
-            </Link>
+              </Link>
 
-            {/* Desktop Navigation */}
-            <nav className="hidden lg:flex items-center space-x-2">
-              {navItems.map((item, index) => (
-                <a
-                  key={index}
-                  href={item.href}
-                  className="relative px-6 py-3 text-slate-600 hover:text-indigo-600 font-semibold transition-all duration-300 rounded-2xl group overflow-hidden"
+              {/* Desktop Navigation */}
+              <nav className="hidden lg:flex items-center space-x-1">
+                {navItems.map((item, index) => (
+                  <a
+                    key={index}
+                    href={item.href}
+                    className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    {item.name}
+                  </a>
+                ))}
+              </nav>
+            </div>
+
+            {/* Right side - CTAs at extreme right */}
+            <div className="hidden lg:flex items-center space-x-3">
+              <Link href="/dashboard">
+                <Button
+                  variant="ghost"
+                  className="text-gray-700 hover:text-gray-900 font-medium px-4 py-2 text-sm"
                 >
-                  <span className="relative z-10 transition-all duration-300">{item.name}</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-95 group-hover:scale-100"></div>
-                  <div className="absolute bottom-0 left-1/2 w-0 h-0.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 group-hover:w-full group-hover:left-0 transition-all duration-300"></div>
-                </a>
-              ))}
-            </nav>
-
-            {/* Desktop CTA */}
-            <div className="hidden lg:flex items-center space-x-4">
+                  Explore events
+                </Button>
+              </Link>
               <Link href="/login">
                 <Button
                   variant="ghost"
-                  className="text-slate-600 hover:text-slate-900 font-semibold px-6 py-3 rounded-2xl hover:bg-slate-50 transition-all duration-300 hover:scale-105 hover:shadow-md"
+                  className="text-gray-700 hover:text-gray-900 font-medium px-4 py-2 text-sm"
                 >
-                  Sign In
+                  Log in
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white px-8 py-3 rounded-2xl font-bold shadow-lg hover:shadow-2xl transition-all duration-500 transform hover:scale-105 hover:-translate-y-1 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-x-[-100%] group-hover:translate-x-[100%]"></div>
-                  <span className="relative z-10 flex items-center">
-                    Get Started Free
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
-                  </span>
+                <Button className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 text-sm font-semibold rounded-lg transition-colors">
+                  Sign up
                 </Button>
               </Link>
             </div>
@@ -294,23 +320,23 @@ export default function LandingPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden relative w-12 h-12 rounded-2xl hover:bg-slate-100 transition-all duration-300 group"
+              className="lg:hidden"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
               <div className="relative w-6 h-6">
                 <span
-                  className={`absolute block w-6 h-0.5 bg-slate-700 transition-all duration-500 ease-out ${
-                    isMobileMenuOpen ? "rotate-45 top-3 bg-indigo-600" : "top-1"
+                  className={`absolute block w-6 h-0.5 bg-gray-700 transition-all duration-200 ${
+                    isMobileMenuOpen ? "rotate-45 top-3" : "top-1"
                   }`}
                 ></span>
                 <span
-                  className={`absolute block w-6 h-0.5 bg-slate-700 top-3 transition-all duration-300 ${
-                    isMobileMenuOpen ? "opacity-0 scale-0" : "opacity-100 scale-100"
+                  className={`absolute block w-6 h-0.5 bg-gray-700 top-3 transition-all duration-200 ${
+                    isMobileMenuOpen ? "opacity-0" : "opacity-100"
                   }`}
                 ></span>
                 <span
-                  className={`absolute block w-6 h-0.5 bg-slate-700 transition-all duration-500 ease-out ${
-                    isMobileMenuOpen ? "-rotate-45 top-3 bg-indigo-600" : "top-5"
+                  className={`absolute block w-6 h-0.5 bg-gray-700 transition-all duration-200 ${
+                    isMobileMenuOpen ? "-rotate-45 top-3" : "top-5"
                   }`}
                 ></span>
               </div>
@@ -319,35 +345,33 @@ export default function LandingPage() {
 
           {/* Mobile Menu */}
           <div
-            className={`lg:hidden overflow-hidden transition-all duration-700 ease-out ${
+            className={`lg:hidden overflow-hidden transition-all duration-300 ${
               isMobileMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
             }`}
           >
-            <div className="py-6 space-y-2 bg-white/95 backdrop-blur-2xl rounded-3xl mt-4 border border-slate-200/60 shadow-2xl mx-4 transform transition-all duration-500">
+            <div className="py-4 space-y-1 bg-white border-t border-gray-200">
               {navItems.map((item, index) => (
                 <a
                   key={index}
                   href={item.href}
-                  className="flex items-center justify-between px-6 py-4 text-slate-700 hover:text-indigo-600 font-semibold transition-all duration-300 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 mx-2 rounded-2xl group"
+                  className="block px-4 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  style={{ animationDelay: `${index * 100}ms` }}
                 >
-                  <span className="transition-all duration-300">{item.name}</span>
-                  <ChevronRight className="h-5 w-5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
+                  {item.name}
                 </a>
               ))}
               <div className="px-4 pt-4 space-y-3">
                 <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
                   <Button
                     variant="outline"
-                    className="w-full py-4 rounded-2xl font-semibold border-2 hover:border-indigo-500 hover:bg-indigo-50 transition-all duration-300 bg-transparent hover:scale-105"
+                    className="w-full text-base font-semibold"
                   >
-                    Sign In
+                    Log in
                   </Button>
                 </Link>
                 <Link href="/signup" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Button className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white py-4 rounded-2xl font-bold shadow-lg hover:shadow-2xl transition-all duration-500 hover:scale-105">
-                    Get Started Free
+                  <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white text-base font-semibold">
+                    Get started free
                   </Button>
                 </Link>
               </div>
@@ -356,384 +380,632 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 px-6 bg-gradient-to-br from-slate-50 via-indigo-50/30 to-white overflow-hidden">
-        {/* Animated Background Elements */}
-        <div className="absolute top-20 left-10 w-72 h-72 bg-indigo-200/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-indigo-100/10 via-purple-100/10 to-pink-100/10 rounded-full blur-3xl animate-spin"
-          style={{ animationDuration: "20s" }}
-        ></div>
+      {/* Hero Section - Zapier Style with Illustration */}
+      <section className="relative pt-32 pb-20 px-6 bg-[#FBF7F4]">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left Content */}
+            <div>
+              <div className="inline-block mb-6">
+                <span className="text-sm font-bold tracking-wider text-orange-500 uppercase">Campus Events Made Simple</span>
+              </div>
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-[1.05] text-gray-900">
+                The most connected<br />
+                campus events platform
+              </h1>
+              <p className="text-xl text-gray-700 mb-10 leading-relaxed max-w-xl">
+                Discover events, join clubs, and build your campus experience across 200+ colleges in India.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link href="/signup">
+                  <Button
+                    size="lg"
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 text-lg font-semibold rounded-md transition-all hover:shadow-lg"
+                  >
+                    Start free with email
+                  </Button>
+                </Link>
+                <Link href="/signup">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-2 border-gray-900 hover:bg-gray-900 hover:text-white px-8 py-4 text-lg font-semibold rounded-md transition-all"
+                  >
+                    Start free with Google
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            
+            {/* Right Illustration Area */}
+            <div className="relative h-[500px] hidden lg:block">
+              <div className="absolute inset-0 flex items-center justify-center">
+                {/* Abstract illustration with better animations */}
+                <div className="relative w-full h-full">
+                  {/* Main large circle - pulsing */}
+                  <div className="absolute top-1/4 right-1/4 w-64 h-64 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full opacity-20 animate-pulse"></div>
+                  
+                  {/* Secondary circle - floating */}
+                  <div className="absolute bottom-1/4 left-1/4 w-48 h-48 bg-gradient-to-br from-orange-400 to-orange-500 rounded-full opacity-30 animate-float"></div>
+                  
+                  {/* Central box - rotating slowly */}
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-4 border-gray-900 rounded-2xl rotate-12 animate-float" style={{animationDuration: '8s'}}></div>
+                  
+                  {/* Small accent squares */}
+                  <div className="absolute bottom-1/3 right-1/3 w-20 h-20 bg-orange-500 rounded-lg shadow-lg animate-float" style={{animationDelay: '1s', animationDuration: '5s'}}></div>
+                  <div className="absolute top-1/3 left-1/3 w-12 h-12 bg-orange-400 rounded shadow-md animate-float" style={{animationDelay: '2s', animationDuration: '6s'}}></div>
+                  
+                  {/* Connecting lines effect */}
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 border border-orange-200 rounded-full opacity-30"></div>
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 border border-orange-300 rounded-full opacity-40 animate-pulse" style={{animationDuration: '3s'}}></div>
+                  
+                  {/* Small dots */}
+                  <div className="absolute top-20 right-20 w-3 h-3 bg-orange-500 rounded-full animate-pulse"></div>
+                  <div className="absolute bottom-20 left-20 w-3 h-3 bg-orange-600 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
+                  <div className="absolute top-40 left-40 w-2 h-2 bg-orange-400 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-        <div className="container mx-auto text-center max-w-7xl relative z-10">
-          {/* Animated Badge */}
-          <div className="animate-fade-in-up">
-            <Badge className="mb-8 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 text-indigo-700 border-indigo-200 px-8 py-4 rounded-full font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-              🚀 Trusted by 50,000+ Students • 200+ Colleges • 10,000+ Events
-            </Badge>
+      {/* Dark Stats Section - Like Zapier */}
+      <section className="relative py-24 px-6 bg-gray-900 text-white overflow-hidden">
+        {/* Grid pattern background */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+            backgroundSize: '50px 50px'
+          }}></div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="mb-12">
+            <span className="text-sm font-bold tracking-wider text-orange-500 uppercase">Real campus engagement. Real results.</span>
+          </div>
+          
+          <div ref={counterRef} className="mb-16">
+            <h2 className="text-6xl md:text-8xl font-bold mb-4">
+              {counter.toLocaleString()}+
+            </h2>
+            <p className="text-xl text-orange-500">Students connected through Clunite (and counting)</p>
           </div>
 
-          {/* Main Heading */}
-          <div className="animate-fade-in-up delay-200">
-            <h1 className="text-6xl md:text-8xl font-black mb-8 leading-tight text-slate-900">
-              Welcome to
-              <br />
-              <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient-x">
-                Clunite
-              </span>
-            </h1>
-          </div>
-
-          {/* Subtitle */}
-          <div className="animate-fade-in-up delay-400">
-            <p className="text-2xl text-slate-600 mb-12 max-w-4xl mx-auto leading-relaxed font-medium">
-              The most comprehensive platform for discovering events, building skills, and connecting with opportunities
-              across India's top colleges. <strong>Unite • Create • Celebrate</strong> your campus journey.
-            </p>
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="animate-fade-in-up delay-600 flex flex-col sm:flex-row gap-6 justify-center mb-16">
-            <Link href="/signup">
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white px-12 py-5 rounded-2xl text-xl font-bold shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1"
-              >
-                <Play className="mr-3 h-6 w-6" />
-                Start Exploring
-                <ArrowRight className="ml-3 h-6 w-6" />
-              </Button>
-            </Link>
-            <Link href="/dashboard/organizer/host/verify">
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-2 border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 px-12 py-5 rounded-2xl text-xl font-bold transition-all duration-300 bg-white/80 backdrop-blur-sm hover:scale-105 hover:-translate-y-1"
-              >
-                <Plus className="mr-3 h-5 w-5" />
-                Host an Event
-              </Button>
-            </Link>
-          </div>
-
-          {/* Animated Stats */}
-          <div className="animate-fade-in-up delay-800 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-5xl mx-auto">
+          {/* Feature Grid */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { icon: Users, value: "50K+", label: "Active Students", color: "text-indigo-600", delay: "delay-1000" },
-              { icon: Calendar, value: "10K+", label: "Events Hosted", color: "text-purple-600", delay: "delay-1200" },
-              { icon: Award, value: "200+", label: "Partner Colleges", color: "text-pink-600", delay: "delay-1400" },
-              { icon: TrendingUp, value: "95%", label: "Success Rate", color: "text-slate-600", delay: "delay-1600" },
-            ].map((stat, index) => (
-              <div
-                key={index}
-                className={`text-center group hover:scale-110 transition-all duration-300 ${stat.delay}`}
-              >
-                <div
-                  className={`w-20 h-20 ${stat.color} bg-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl group-hover:shadow-2xl transition-all duration-300 border border-slate-100 group-hover:border-slate-200`}
-                >
-                  <stat.icon className="h-10 w-10" />
+              { title: "Discover events across 200+ colleges instantly", icon: Target },
+              { title: "Smart recommendations match your interests", icon: Star },
+              { title: "Form teams and connect with like-minded students", icon: Users },
+              { title: "Track achievements and build your portfolio", icon: Trophy },
+            ].map((item, index) => (
+              <div key={index} className="border border-gray-700 p-6 rounded-lg hover:border-orange-500 transition-all duration-300 cursor-pointer group">
+                <div className="mb-4 group-hover:scale-110 transition-transform">
+                  <item.icon className="h-8 w-8 text-orange-500" />
                 </div>
-                <div className="text-4xl font-black text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors">
-                  {stat.value}
-                </div>
-                <div className="text-sm font-bold text-slate-600 uppercase tracking-wide">{stat.label}</div>
+                <p className="text-base leading-relaxed">{item.title}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 px-6 bg-white">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-indigo-50 text-indigo-700 border-indigo-200 px-4 py-2 rounded-full font-semibold">
-              ✨ Features
-            </Badge>
-            <h2 className="text-5xl font-black text-slate-900 mb-6">
-              Everything you need to
-              <br />
-              <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                succeed on campus
-              </span>
-            </h2>
-            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
-              Discover powerful features designed to enhance your college experience and connect you with opportunities.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature, index) => (
-              <Card
-                key={index}
-                className="border-0 shadow-lg hover:shadow-2xl transition-all duration-500 group hover:-translate-y-2"
-              >
-                <CardHeader className="pb-4">
-                  <div
-                    className={`w-16 h-16 bg-gradient-to-r ${feature.color} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}
-                  >
-                    <feature.icon className="h-8 w-8 text-white" />
-                  </div>
-                  <CardTitle className="text-xl font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                    {feature.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-slate-600 leading-relaxed">{feature.description}</p>
-                </CardContent>
-              </Card>
+      {/* Trusted By Section */}
+      <section className="py-16 px-6 bg-white border-y border-gray-200">
+        <div className="max-w-7xl mx-auto">
+          <p className="text-center text-sm text-gray-600 mb-8">Trusted by students from India's top institutions</p>
+          <div className="flex flex-wrap items-center justify-center gap-12 opacity-60">
+            {[
+              "IIT Delhi",
+              "IIT Bombay",
+              "BITS Pilani",
+              "NIT Trichy",
+              "VIT Vellore",
+              "IIIT Hyderabad",
+              "DTU",
+              "NSUT",
+            ].map((college, index) => (
+              <div key={index} className="text-lg font-bold text-gray-900 hover:text-orange-500 transition-colors cursor-pointer">
+                {college}
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20 px-6 bg-gradient-to-br from-slate-50 to-indigo-50/30">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-green-50 text-green-700 border-green-200 px-4 py-2 rounded-full font-semibold">
-              💰 Pricing
-            </Badge>
-            <h2 className="text-5xl font-black text-slate-900 mb-6">
-              Simple, transparent
-              <br />
-              <span className="bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                pricing for everyone
-              </span>
+      {/* Use Cases Section with Tabs */}
+      <section className="py-24 px-6 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-12">
+            <span className="text-sm font-bold tracking-wider text-orange-500 uppercase mb-6 block">Real campus teams, real results</span>
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+              Built for every campus role
             </h2>
-            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-700 max-w-3xl">
+              Whether you're a student, organizer, or club leader—Clunite has the tools you need.
+            </p>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex flex-wrap gap-3 mb-12">
+            {[
+              { id: "students", label: "Students" },
+              { id: "organizers", label: "Event Organizers" },
+              { id: "clubs", label: "Club Leaders" },
+              { id: "colleges", label: "Colleges" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all ${
+                  activeTab === tab.id
+                    ? "bg-gray-900 text-white shadow-lg"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          <div className="bg-gray-50 rounded-2xl p-12 border border-gray-200">
+            {activeTab === "students" && (
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                    Discover events that match your interests
+                  </h3>
+                  <p className="text-lg text-gray-700 mb-6">
+                    Smart recommendations help you find hackathons, workshops, cultural events, and competitions across 200+ colleges—automatically filtered to your skills and interests.
+                  </p>
+                  <Link href="/signup">
+                    <Button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+                      Start discovering events →
+                    </Button>
+                  </Link>
+                </div>
+                <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-lg">
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-3">
+                      <Users className="w-5 h-5 text-blue-600" />
+                      <span className="font-semibold">Member Management</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Calendar className="w-5 h-5 text-green-600" />
+                      <span className="font-semibold">Event Scheduling</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <TrendingUp className="w-5 h-5 text-orange-600" />
+                      <span className="font-semibold">Engagement Analytics</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === "organizers" && (
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                    Host events that students love
+                  </h3>
+                  <p className="text-lg text-gray-700 mb-6">
+                    From registration to post-event feedback—manage everything in one place. Reach thousands of students across multiple campuses instantly.
+                  </p>
+                  <Link href="/dashboard/organizer/host/verify">
+                    <Button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+                      Start hosting events →
+                    </Button>
+                  </Link>
+                </div>
+                <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-lg">
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-3">
+                      <BarChart3 className="w-5 h-5 text-violet-600" />
+                      <span className="font-semibold">Real-time Analytics</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Users className="w-5 h-5 text-emerald-600" />
+                      <span className="font-semibold">Attendee Management</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Shield className="w-5 h-5 text-rose-600" />
+                      <span className="font-semibold">Verified Listings</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === "clubs" && (
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                    Grow your club community
+                  </h3>
+                  <p className="text-lg text-gray-700 mb-6">
+                    Manage members, organize events, and track engagement—all in one dashboard. Build a thriving club culture with data-driven insights.
+                  </p>
+                  <Link href="/signup">
+                    <Button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+                      Start building community →
+                    </Button>
+                  </Link>
+                </div>
+                <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-lg">
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-3">
+                      <Users className="w-5 h-5 text-blue-600" />
+                      <span className="font-semibold">Member Management</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Calendar className="w-5 h-5 text-green-600" />
+                      <span className="font-semibold">Event Scheduling</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <TrendingUp className="w-5 h-5 text-orange-600" />
+                      <span className="font-semibold">Engagement Analytics</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === "colleges" && (
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                    Centralize campus activities
+                  </h3>
+                  <p className="text-lg text-gray-700 mb-6">
+                    Give your entire campus a unified platform for events, clubs, and student engagement. Monitor activity, ensure quality, and boost participation.
+                  </p>
+                  <Link href="/signup">
+                    <Button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+                      Partner with us →
+                    </Button>
+                  </Link>
+                </div>
+                <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-lg">
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-3">
+                      <Globe className="w-5 h-5 text-cyan-600" />
+                      <span className="font-semibold">Multi-Campus Network</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Shield className="w-5 h-5 text-rose-600" />
+                      <span className="font-semibold">Quality Control</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <BarChart3 className="w-5 h-5 text-violet-600" />
+                      <span className="font-semibold">Campus-wide Analytics</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section - Zapier Style with Hero */}
+      <section id="features" className="py-24 px-6 bg-[#FBF7F4]">
+        <div className="max-w-7xl mx-auto">
+          {/* Hero Section */}
+          <div className="grid lg:grid-cols-2 gap-16 items-center mb-20">
+            {/* Left Content */}
+            <div>
+              <span className="text-sm font-bold tracking-wider text-orange-500 uppercase mb-4 block">Platform Features</span>
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+                Campus events,<br />
+                all in one place
+              </h2>
+              <p className="text-lg text-gray-700 leading-relaxed">
+                Clunite brings events, clubs, teams, and opportunities into one place, so you can focus on building connections and growing your campus experience—all without switching platforms.
+              </p>
+            </div>
+
+            {/* Right Illustration */}
+            <div className="relative h-96 bg-white rounded-2xl border-2 border-gray-200 overflow-hidden">
+              <div className="absolute inset-0 grid grid-cols-4 grid-rows-4 gap-0">
+                {/* Grid lines */}
+                {Array.from({ length: 16 }).map((_, i) => (
+                  <div key={i} className="border border-gray-200"></div>
+                ))}
+              </div>
+              {/* Decorative elements */}
+              <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-orange-500 rounded-full opacity-90"></div>
+              <div className="absolute bottom-1/4 right-1/4 w-24 h-24 bg-orange-500 rounded opacity-90"></div>
+              <div className="absolute top-1/2 right-1/3 w-8 h-8 bg-orange-400 rotate-45"></div>
+              {/* Curved arrow */}
+              <svg className="absolute top-1/3 right-1/4 w-32 h-32 text-orange-500" viewBox="0 0 100 100" fill="none">
+                <path d="M20 80 Q 50 20, 80 60" stroke="currentColor" strokeWidth="3" fill="none" />
+                <polygon points="80,60 75,55 85,58" fill="currentColor" />
+              </svg>
+              {/* Person silhouette */}
+              <div className="absolute bottom-8 left-8 w-12 h-16 bg-gray-900 rounded-t-full"></div>
+              <div className="absolute bottom-8 right-12 w-8 h-12 bg-gray-700 rounded-t-full"></div>
+            </div>
+          </div>
+
+          {/* 2x2 Feature Grid */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {[
+              {
+                icon: TrendingUp,
+                title: "Smart event discovery with personalized recommendations",
+                description: "Find hackathons, workshops, and competitions that match your interests and skill level across 200+ colleges.",
+                link: "Explore events"
+              },
+              {
+                icon: Users,
+                title: "Team formation and networking tools",
+                description: "Connect with like-minded students and form teams for competitions, projects, and collaborative events.",
+                link: "Build teams"
+              },
+              {
+                icon: Trophy,
+                title: "Achievement tracking and portfolio building",
+                description: "Earn certificates, badges, and build your portfolio with every event you participate in.",
+                link: "Track progress"
+              },
+              {
+                icon: Globe,
+                title: "Multi-campus network for inter-college events",
+                description: "Connect with students from 200+ colleges across India and participate in inter-college competitions.",
+                link: "Join network"
+              },
+            ].map((feature, index) => (
+              <div
+                key={index}
+                className="bg-white p-10 rounded-xl border border-gray-200 hover:border-orange-500 transition-all duration-300 group"
+              >
+                <div className="mb-6 p-3 bg-orange-50 rounded-lg inline-block">
+                  <feature.icon className="h-8 w-8 text-orange-500" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-4 leading-tight">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-700 mb-6 leading-relaxed">
+                  {feature.description}
+                </p>
+                <a href="#" className="inline-flex items-center text-sm font-semibold text-gray-900 hover:text-orange-500 transition-colors group-hover:text-orange-500">
+                  {feature.link} →
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section - Zapier Style */}
+      <section id="pricing" className="py-24 px-6 bg-[#FBF7F4]">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="text-sm font-bold tracking-wider text-orange-500 uppercase mb-4 block">Flexible Pricing</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">
+              Simple, transparent pricing
+            </h2>
+            <p className="text-lg text-gray-700 max-w-2xl mx-auto">
               Choose the perfect plan for your needs. Start free and upgrade as you grow.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {pricingPlans.map((plan, index) => (
-              <Card
+              <div
                 key={index}
-                className={`border-0 shadow-lg hover:shadow-2xl transition-all duration-500 relative ${
-                  plan.popular ? "ring-2 ring-indigo-500 scale-105" : ""
+                className={`bg-white p-8 rounded-xl border transition-all ${
+                  plan.popular ? "border-orange-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
                 }`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <Badge className="bg-indigo-600 text-white px-4 py-2 rounded-full font-bold">Most Popular</Badge>
+                  <div className="inline-block bg-orange-500 text-white px-3 py-1 rounded-md text-xs font-semibold mb-4">
+                    Most Popular
                   </div>
                 )}
-                <CardHeader className="text-center pb-8">
-                  <CardTitle className="text-2xl font-bold text-slate-900 mb-2">{plan.name}</CardTitle>
-                  <div className="mb-4">
-                    <span className="text-4xl font-black text-slate-900">{plan.price}</span>
-                    {plan.period && <span className="text-slate-600">{plan.period}</span>}
-                  </div>
-                  <p className="text-slate-600">{plan.description}</p>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <ul className="space-y-3">
-                    {plan.features.map((feature, featureIndex) => (
-                      <li key={featureIndex} className="flex items-center">
-                        <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0" />
-                        <span className="text-slate-700">{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    className={`w-full py-3 rounded-xl font-bold text-lg transition-all duration-300 ${
-                      plan.popular
-                        ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl"
-                        : "border-2 border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 bg-transparent text-slate-700"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Success Stories Section */}
-      <section id="testimonials" className="py-20 px-6 bg-white">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-yellow-50 text-yellow-700 border-yellow-200 px-4 py-2 rounded-full font-semibold">
-              🌟 Success Stories
-            </Badge>
-            <h2 className="text-5xl font-black text-slate-900 mb-6">
-              Loved by students
-              <br />
-              <span className="bg-gradient-to-r from-yellow-600 to-orange-600 bg-clip-text text-transparent">
-                across India
-              </span>
-            </h2>
-            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
-              See how Clunite has transformed the campus experience for thousands of students and organizers.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <Card
-                key={index}
-                className="border-0 shadow-lg hover:shadow-2xl transition-all duration-500 group hover:-translate-y-2"
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-center mb-4">
-                    {[...Array(testimonial.rating)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 text-yellow-500 fill-current" />
-                    ))}
-                  </div>
-                  <p className="text-slate-700 mb-6 leading-relaxed">"{testimonial.content}"</p>
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-white font-bold mr-4">
-                      {testimonial.avatar}
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">{testimonial.name}</div>
-                      <div className="text-sm text-slate-600">{testimonial.role}</div>
-                      <div className="text-sm text-indigo-600 font-medium">{testimonial.college}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section id="faq" className="py-20 px-6 bg-gradient-to-br from-slate-50 to-purple-50/30">
-        <div className="container mx-auto max-w-4xl">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-purple-50 text-purple-700 border-purple-200 px-4 py-2 rounded-full font-semibold">
-              ❓ FAQ
-            </Badge>
-            <h2 className="text-5xl font-black text-slate-900 mb-6">
-              Frequently asked
-              <br />
-              <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                questions
-              </span>
-            </h2>
-            <p className="text-xl text-slate-600">
-              Everything you need to know about Clunite. Can't find the answer you're looking for?
-              <a href="#contact" className="text-indigo-600 hover:text-indigo-800 font-semibold">
-                {" "}
-                Contact us
-              </a>
-              .
-            </p>
-          </div>
-
-          <Accordion type="single" collapsible className="space-y-4">
-            {faqs.map((faq, index) => (
-              <AccordionItem
-                key={index}
-                value={`item-${index}`}
-                className="border border-slate-200 rounded-2xl px-6 bg-white shadow-sm hover:shadow-md transition-all duration-300"
-              >
-                <AccordionTrigger className="text-left font-semibold text-slate-900 hover:text-indigo-600 py-6">
-                  {faq.question}
-                </AccordionTrigger>
-                <AccordionContent className="text-slate-600 pb-6 leading-relaxed">{faq.answer}</AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-6 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="container mx-auto max-w-4xl text-center relative z-10">
-          <h2 className="text-5xl font-black text-white mb-6">
-            Ready to transform your
-            <br />
-            campus experience?
-          </h2>
-          <p className="text-xl text-indigo-100 mb-12 max-w-2xl mx-auto">
-            Join thousands of students who are already discovering amazing opportunities on Clunite.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-6 justify-center">
-            <Link href="/signup">
-              <Button
-                size="lg"
-                className="bg-white text-indigo-600 hover:bg-gray-50 px-12 py-5 rounded-2xl text-xl font-bold shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105"
-              >
-                <Play className="mr-3 h-6 w-6" />
-                Start Exploring
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-2 border-white text-white hover:bg-white hover:text-indigo-600 px-12 py-5 rounded-2xl text-xl font-bold transition-all duration-300 bg-transparent hover:scale-105"
-              >
-                <Plus className="mr-3 h-5 w-5" />
-                Host an Event
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-slate-900 text-white py-16 px-6">
-        <div className="container mx-auto max-w-7xl">
-          <div className="grid md:grid-cols-4 gap-8 mb-12">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-xl flex items-center justify-center">
-                  <span className="text-white font-black">C</span>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                <div className="mb-4">
+                  <span className="text-4xl font-bold text-gray-900">{plan.price}</span>
+                  {plan.period && <span className="text-gray-600 text-sm ml-1">{plan.period}</span>}
                 </div>
-                <div>
-                  <div className="text-xl font-black">Clunite</div>
-                  <div className="text-xs text-slate-400 font-bold tracking-wide">UNITE • CREATE • CELEBRATE</div>
-                </div>
+                <p className="text-gray-600 mb-6 text-sm">{plan.description}</p>
+                <ul className="space-y-3">
+                  {plan.features.map((feature, featureIndex) => (
+                    <li key={featureIndex} className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                      <span className="text-gray-700 text-sm">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  className={`w-full mb-6 rounded-lg ${
+                    plan.popular
+                      ? "bg-orange-500 hover:bg-orange-600 text-white"
+                      : "bg-gray-900 hover:bg-gray-800 text-white"
+                  } font-semibold py-2.5 text-sm h-11`}
+                >
+                  {plan.cta}
+                </Button>
               </div>
-              <p className="text-slate-400 leading-relaxed">
-                Connecting students with opportunities across India's top colleges.
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Success Stories Section - Zapier Style with Large Quote */}
+      <section id="testimonials" className="py-24 px-6 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-16">
+            <span className="text-sm font-bold tracking-wider text-orange-500 uppercase mb-4 block">Student Success Stories</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">
+              Loved by students<br />across India
+            </h2>
+            <p className="text-lg text-gray-700 max-w-2xl">
+              See how students are using Clunite to discover events, build teams, and grow their campus experience.
+            </p>
+          </div>
+
+          {/* Featured Large Testimonial */}
+          <div className="mb-10 bg-gray-50 p-10 rounded-xl border border-gray-200">
+            <div className="max-w-4xl">
+              <div className="flex gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="h-5 w-5 fill-orange-500 text-orange-500" />
+                ))}
+              </div>
+              <p className="text-xl md:text-2xl font-medium text-gray-900 mb-6 leading-relaxed">
+                "Clunite completely transformed how I discover and participate in campus events. I've connected with amazing people and built skills I never thought possible."
               </p>
-              <div className="flex space-x-4">
-                <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-700 transition-colors cursor-pointer">
-                  <Heart className="h-5 w-5" />
-                </div>
-                <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-700 transition-colors cursor-pointer">
-                  <MessageSquare className="h-5 w-5" />
-                </div>
-                <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-700 transition-colors cursor-pointer">
-                  <Globe className="h-5 w-5" />
+              <div className="flex items-center gap-3 border-t border-gray-200 pt-6">
+                <div>
+                  <div className="font-bold text-gray-900">Priya Sharma</div>
+                  <div className="text-gray-600 text-sm">Computer Science Student</div>
+                  <div className="text-orange-500 font-medium text-sm">IIT Delhi</div>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Grid of smaller testimonials */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {testimonials.slice(1).map((testimonial, index) => (
+              <div
+                key={index}
+                className="group relative bg-gray-50 p-6 rounded-xl border border-gray-200 hover:border-orange-500 transition-all duration-300"
+              >
+                <div className="flex gap-1 mb-3">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="h-4 w-4 fill-orange-500 text-orange-500" />
+                  ))}
+                </div>
+                <p className="text-gray-700 mb-4 leading-relaxed text-sm">"{testimonial.content}"</p>
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="font-bold text-gray-900 text-sm">{testimonial.name}</div>
+                  <div className="text-xs text-gray-600">{testimonial.role}</div>
+                  <div className="text-xs text-orange-500 font-medium">{testimonial.college}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section - Clean Accordion Style */}
+      <section id="faq" className="py-24 px-6 bg-[#FBF7F4]">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+              FAQs
+            </h2>
+          </div>
+
+          <div className="bg-gray-50 rounded-2xl p-8">
+            <Accordion type="single" collapsible className="space-y-1">
+              {faqs.map((faq, index) => (
+                <AccordionItem
+                  key={index}
+                  value={`item-${index}`}
+                  className="border-b border-gray-200 last:border-0"
+                >
+                  <AccordionTrigger className="text-left font-medium text-gray-900 hover:no-underline py-5 text-base [&[data-state=open]]:text-orange-500">
+                    {faq.question}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-gray-700 pb-5 leading-relaxed text-sm">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+
+          <div className="text-center mt-8">
+            <p className="text-gray-600">
+              Can't find the answer you're looking for?{" "}
+              <a href="#contact" className="text-orange-500 hover:text-orange-600 font-semibold underline">
+                Contact us
+              </a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section - Zapier Style with Background */}
+      <section className="relative py-24 px-6 bg-gray-900 text-white overflow-hidden">
+        {/* Animated grid background */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+            backgroundSize: '60px 60px'
+          }}></div>
+        </div>
+        
+        {/* Geometric shapes */}
+        <div className="absolute top-20 right-20 w-64 h-64 border border-orange-500/20 rounded-lg rotate-12"></div>
+        <div className="absolute bottom-20 left-20 w-48 h-48 bg-orange-500/10 rounded-full"></div>
+        
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
+            Ready to transform your<br />
+            <span className="text-orange-500">campus experience?</span>
+          </h2>
+          <p className="text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
+            Join thousands of students who are already discovering amazing opportunities on Clunite.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/signup">
+              <Button
+                size="lg"
+                className="bg-orange-500 hover:bg-orange-600 text-white px-10 py-5 text-lg font-semibold rounded-md transition-all hover:shadow-2xl hover:scale-105"
+              >
+                Start automating today
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer - Zapier Style */}
+      <footer className="bg-white border-t border-gray-200 py-16 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-4 gap-12 mb-12">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-xl">C</span>
+                </div>
+                <span className="text-xl font-bold text-gray-900">Clunite</span>
+              </div>
+              <p className="text-gray-600 leading-relaxed">
+                Connecting students with opportunities across India's top colleges.
+              </p>
+            </div>
 
             <div>
-              <h3 className="font-bold text-lg mb-4">Platform</h3>
-              <ul className="space-y-2 text-slate-400">
+              <h3 className="font-bold text-gray-900 text-base mb-4">Platform</h3>
+              <ul className="space-y-3 text-gray-600">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Browse Events
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Host Events
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Join Clubs
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Analytics
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Mobile App
                   </a>
                 </li>
@@ -741,30 +1013,30 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="font-bold text-lg mb-4">Resources</h3>
-              <ul className="space-y-2 text-slate-400">
+              <h3 className="font-bold text-gray-900 text-base mb-4">Resources</h3>
+              <ul className="space-y-3 text-gray-600">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Help Center
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Community
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Blog
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     API Docs
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="#" className="hover:text-gray-900 transition-colors">
                     Status
                   </a>
                 </li>
@@ -772,38 +1044,35 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="font-bold text-lg mb-4">Contact</h3>
-              <ul className="space-y-3 text-slate-400">
-                <li className="flex items-center">
-                  <Mail className="h-4 w-4 mr-2" />
-                  <a href="mailto:hello@clunite.com" className="hover:text-white transition-colors">
+              <h3 className="font-bold text-gray-900 text-base mb-4">Contact</h3>
+              <ul className="space-y-3 text-gray-600">
+                <li>
+                  <a href="mailto:hello@clunite.com" className="hover:text-gray-900 transition-colors">
                     hello@clunite.com
                   </a>
                 </li>
-                <li className="flex items-center">
-                  <Phone className="h-4 w-4 mr-2" />
-                  <a href="tel:+911234567890" className="hover:text-white transition-colors">
+                <li>
+                  <a href="tel:+911234567890" className="hover:text-gray-900 transition-colors">
                     +91 12345 67890
                   </a>
                 </li>
-                <li className="flex items-center">
-                  <MapPin className="h-4 w-4 mr-2" />
+                <li>
                   <span>Bangalore, India</span>
                 </li>
               </ul>
             </div>
           </div>
 
-          <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center">
-            <div className="text-slate-400 mb-4 md:mb-0">© 2024 Clunite. All rights reserved.</div>
-            <div className="flex space-x-6 text-slate-400">
-              <a href="#" className="hover:text-white transition-colors">
+          <div className="border-t border-gray-200 pt-8 flex flex-col md:flex-row justify-between items-center">
+            <div className="text-gray-600 mb-4 md:mb-0">© 2024 Clunite. All rights reserved.</div>
+            <div className="flex space-x-6 text-gray-600">
+              <a href="#" className="hover:text-gray-900 transition-colors">
                 Privacy Policy
               </a>
-              <a href="#" className="hover:text-white transition-colors">
+              <a href="#" className="hover:text-gray-900 transition-colors">
                 Terms of Service
               </a>
-              <a href="#" className="hover:text-white transition-colors">
+              <a href="#" className="hover:text-gray-900 transition-colors">
                 Cookie Policy
               </a>
             </div>
@@ -811,47 +1080,6 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* Custom CSS for animations */}
-      <style jsx>{`
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes gradient-x {
-          0%, 100% {
-            background-size: 200% 200%;
-            background-position: left center;
-          }
-          50% {
-            background-size: 200% 200%;
-            background-position: right center;
-          }
-        }
-        
-        .animate-fade-in-up {
-          animation: fade-in-up 0.6s ease-out forwards;
-        }
-        
-        .animate-gradient-x {
-          animation: gradient-x 3s ease infinite;
-        }
-        
-        .delay-200 { animation-delay: 0.2s; }
-        .delay-400 { animation-delay: 0.4s; }
-        .delay-600 { animation-delay: 0.6s; }
-        .delay-800 { animation-delay: 0.8s; }
-        .delay-1000 { animation-delay: 1s; }
-        .delay-1200 { animation-delay: 1.2s; }
-        .delay-1400 { animation-delay: 1.4s; }
-        .delay-1600 { animation-delay: 1.6s; }
-      `}</style>
     </div>
   )
 }
