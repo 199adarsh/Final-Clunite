@@ -203,7 +203,12 @@ export default function VerifyClubPage() {
         .update({ role: 'organizer' })
         .eq('id', authUser.id)
 
-      // 10. Clear sessionStorage
+      // 10. Store club info in sessionStorage for immediate access
+      sessionStorage.setItem('selectedClubId', club.id)
+      sessionStorage.setItem('selectedClubName', club.name)
+      sessionStorage.setItem('hostVerified', 'true')
+      
+      // Clear pending club data
       sessionStorage.removeItem('pendingClubId')
       sessionStorage.removeItem('pendingBannerFile')
 
@@ -211,9 +216,9 @@ export default function VerifyClubPage() {
       setVerified(true)
       toast.success("Congratulations! Club created successfully. You are now the club owner!")
       
-      // Redirect to Club Selection page
+      // Redirect directly to Event Management Hub
       setTimeout(() => {
-        window.location.href = '/dashboard/organizer/select-club'
+        router.push('/dashboard/organizer/host')
       }, 2000)
 
     } catch (error: any) {
@@ -243,7 +248,7 @@ export default function VerifyClubPage() {
               </div>
               <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200">
                 <p className="text-sm font-semibold text-green-800">
-                  🎉 Redirecting to Club Selection...
+                  Redirecting to Event Management Hub...
                 </p>
               </div>
             </div>
