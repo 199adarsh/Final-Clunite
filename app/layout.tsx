@@ -33,7 +33,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${poppins.variable}`}>
-      <body className="font-sans antialiased">
+      <body className={`${inter.className} antialiased`}>
         <AuthProvider>
           <Suspense fallback={null}>{children}</Suspense>
           <Toaster 

@@ -30,6 +30,7 @@ export interface Database {
           full_name: string
           role: "student" | "organizer" | "admin"
           college: string
+          branch: string | null
           avatar_url: string | null
           bio: string | null
           created_at: string
@@ -41,6 +42,7 @@ export interface Database {
           full_name: string
           role: "student" | "organizer" | "admin"
           college: string
+          branch?: string | null
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
@@ -52,6 +54,7 @@ export interface Database {
           full_name?: string
           role?: "student" | "organizer" | "admin"
           college?: string
+          branch?: string | null
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
