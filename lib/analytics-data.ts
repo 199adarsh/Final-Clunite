@@ -310,34 +310,44 @@ export async function fetchFinancialMetrics(clubId: string): Promise<FinancialMe
 
     const totalIncome = incomeByEvent.reduce((sum, e) => sum + e.income, 0)
 
-    // Calculate expenses (prize pool + estimated costs)
-    const totalPrizePool = events.reduce((sum, e) => sum + (e.prize_pool || 0), 0)
-    const estimatedOperationalCosts = totalIncome * 0.15 // 15% operational costs
-    const totalExpenses = totalPrizePool + estimatedOperationalCosts
+    // Real expenses from event_expenses + include prize_pool if present
+    const eventIds = events.map(e => e.id)
+    let totalExpenses = 0
+    let expenseBreakdown: Array<{ category: string; amount: number; percentage: number }> = []
 
-    // Expense breakdown
-    const expenseBreakdown = [
-      {
-        category: 'Prize Pool',
-        amount: totalPrizePool,
-        percentage: totalExpenses > 0 ? (totalPrizePool / totalExpenses) * 100 : 0
-      },
-      {
-        category: 'Operational Costs',
-        amount: estimatedOperationalCosts,
-        percentage: totalExpenses > 0 ? (estimatedOperationalCosts / totalExpenses) * 100 : 0
-      },
-      {
-        category: 'Marketing',
-        amount: totalIncome * 0.05,
-        percentage: 5
-      },
-      {
-        category: 'Venue & Equipment',
-        amount: totalIncome * 0.08,
-        percentage: 8
+    if (eventIds.length > 0) {
+      const { data: expenses } = await supabase
+        .from('event_expenses')
+        .select('category, amount, event_id')
+        .in('event_id', eventIds)
+
+      const byCategory: Record<string, number> = {}
+      let expensesTotal = 0
+      if (expenses && expenses.length > 0) {
+        for (const exp of expenses) {
+          const amt = Number(exp.amount) || 0
+          expensesTotal += amt
+          byCategory[exp.category] = (byCategory[exp.category] || 0) + amt
+        }
       }
-    ]
+
+      // Add prize pool as a category if present
+      const prizePoolTotal = events.reduce((sum, e) => sum + (e.prize_pool || 0), 0)
+      if (prizePoolTotal > 0) {
+        byCategory['Prize Pool'] = (byCategory['Prize Pool'] || 0) + prizePoolTotal
+        expensesTotal += prizePoolTotal
+      }
+
+      totalExpenses = expensesTotal
+      const entries = Object.entries(byCategory)
+      expenseBreakdown = entries.map(([category, amount]) => ({
+        category,
+        amount,
+        percentage: expensesTotal > 0 ? (amount / expensesTotal) * 100 : 0
+      }))
+      // Sort largest first
+      expenseBreakdown.sort((a, b) => b.amount - a.amount)
+    }
 
     return {
       totalIncome,

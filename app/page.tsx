@@ -28,6 +28,7 @@ import {
   Target,
 } from "lucide-react"
 import Link from "next/link"
+import { motion } from "framer-motion"
 
 export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -387,16 +388,37 @@ export default function LandingPage() {
             {/* Left Content */}
             <div>
               <div className="inline-block mb-6">
-                <span className="text-sm font-bold tracking-wider text-orange-500 uppercase">Campus Events Made Simple</span>
+                <motion.span
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.25 }}
+                  className="text-sm font-bold tracking-wider text-orange-500 uppercase"
+                >
+                  Campus Events Made Simple
+                </motion.span>
               </div>
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-[1.05] text-gray-900">
-                The most connected<br />
-                campus events platform
-              </h1>
-              <p className="text-xl text-gray-700 mb-10 leading-relaxed max-w-xl">
+              <motion.h1
+                className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-[1.05] text-gray-900"
+                initial={{ opacity: 0, y: 22 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.3 }}
+              >
+                The most connected<br />campus events platform
+              </motion.h1>
+              <motion.p
+                className="text-xl text-gray-700 mb-10 leading-relaxed max-w-xl"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.45 }}
+              >
                 Discover events, join clubs, and build your campus experience across 200+ colleges in India.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
+              </motion.p>
+              <motion.div
+                className="flex flex-col sm:flex-row gap-4"
+                initial={{ opacity: 0, y: 25 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+              >
                 <Link href="/signup">
                   <Button
                     size="lg"
@@ -414,12 +436,17 @@ export default function LandingPage() {
                     Start free with Google
                   </Button>
                 </Link>
-              </div>
+              </motion.div>
             </div>
             
             {/* Right Illustration Area */}
             <div className="relative h-[500px] hidden lg:block">
-              <div className="absolute inset-0 flex items-center justify-center">
+              <motion.div
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 1, delay: 0.6 }}
+              >
                 {/* Abstract illustration with better animations */}
                 <div className="relative w-full h-full">
                   {/* Main large circle - pulsing */}
@@ -444,7 +471,7 @@ export default function LandingPage() {
                   <div className="absolute bottom-20 left-20 w-3 h-3 bg-orange-600 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
                   <div className="absolute top-40 left-40 w-2 h-2 bg-orange-400 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </div>

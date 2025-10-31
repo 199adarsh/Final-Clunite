@@ -189,17 +189,19 @@ export default function HostEventPage() {
           ))}
         </div>
 
-        {/* Feature Cards - 2 per row with consistent dimensions */}
+        {/* Feature Cards - elevated, modern, with subtle animated accents */}
         <div className="grid md:grid-cols-2 gap-6">
           {/* Host New Event Card */}
-          <Card className="bg-white border-2 border-gray-200 rounded-2xl hover:border-gray-300 hover:shadow-xl transition-all duration-300 h-full">
+          <Card className="relative overflow-hidden bg-white/90 backdrop-blur rounded-2xl border border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 h-full group">
+            {/* decorative gradient blob */}
+            <div className="pointer-events-none absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-orange-200 to-pink-200 opacity-40 group-hover:opacity-60 blur-2xl transition-opacity" />
             <CardHeader className="pb-6">
               <div className="flex items-center justify-between mb-8">
-                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center">
+                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-md">
                   <Plus className="h-7 w-7 text-white" />
                 </div>
                 <Link href="/dashboard/organizer/host/create">
-                  <Button size="sm" variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl">
+                  <Button size="sm" variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl shadow-sm">
                     Quick Start
                   </Button>
                 </Link>
@@ -216,7 +218,7 @@ export default function HostEventPage() {
               </div>
             </CardHeader>
             
-            <CardContent className="border-t-2 border-gray-100 pt-8">
+            <CardContent className="border-t border-gray-100 pt-8">
               <div className="grid grid-cols-2 gap-x-8 mb-10">
                 <div>
                   <div className="text-5xl font-light text-orange-500 mb-2">5 min</div>
@@ -228,8 +230,8 @@ export default function HostEventPage() {
                 </div>
               </div>
               
-              <Link href="/dashboard/organizer/host/create" className="inline-flex items-center text-gray-900 hover:text-orange-500 transition-colors group">
-                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all">
+              <Link href="/dashboard/organizer/host/create" className="inline-flex items-center text-gray-900 hover:text-orange-600 transition-colors group">
+                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all shadow-sm">
                   <ArrowRight className="h-5 w-5" />
                 </div>
                 <span className="text-base font-normal">Create New Event</span>
@@ -238,14 +240,15 @@ export default function HostEventPage() {
           </Card>
 
           {/* Organizers Panel Card */}
-          <Card className="bg-white border-2 border-gray-200 rounded-2xl hover:border-gray-300 hover:shadow-xl transition-all duration-300 h-full">
+          <Card className="relative overflow-hidden bg-white/90 backdrop-blur rounded-2xl border border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 h-full group">
+            <div className="pointer-events-none absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-gradient-to-br from-indigo-200 to-sky-200 opacity-40 group-hover:opacity-60 blur-2xl transition-opacity" />
             <CardHeader className="pb-6">
               <div className="flex items-center justify-between mb-8">
-                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center">
+                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-md">
                   <BarChart3 className="h-7 w-7 text-white" />
                 </div>
                 <Link href="/dashboard/organizer/host/analytics">
-                  <Button size="sm" variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl">
+                  <Button size="sm" variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl shadow-sm">
                     View Now
                   </Button>
                 </Link>
@@ -262,7 +265,7 @@ export default function HostEventPage() {
               </div>
             </CardHeader>
             
-            <CardContent className="border-t-2 border-gray-100 pt-8">
+            <CardContent className="border-t border-gray-100 pt-8">
               <div className="grid grid-cols-2 gap-x-8 mb-10">
                 <div>
                   <div className="text-4xl font-light text-orange-500 mb-2">Real-time</div>
@@ -274,8 +277,8 @@ export default function HostEventPage() {
                 </div>
               </div>
               
-              <Link href="/dashboard/organizer/host/analytics" className="inline-flex items-center text-gray-900 hover:text-orange-500 transition-colors group">
-                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all">
+              <Link href="/dashboard/organizer/host/analytics" className="inline-flex items-center text-gray-900 hover:text-orange-600 transition-colors group">
+                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all shadow-sm">
                   <ArrowRight className="h-5 w-5" />
                 </div>
                 <span className="text-base font-normal">View Analytics Dashboard</span>
@@ -284,14 +287,15 @@ export default function HostEventPage() {
           </Card>
 
           {/* Event Participants Dashboard Card - Third card aligned with first */}
-          <Card className="bg-white border-2 border-gray-200 rounded-2xl hover:border-gray-300 hover:shadow-xl transition-all duration-300 h-full">
+          <Card className="relative overflow-hidden bg-white/90 backdrop-blur rounded-2xl border border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 h-full group">
+            <div className="pointer-events-none absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-emerald-200 to-teal-200 opacity-40 group-hover:opacity-60 blur-2xl transition-opacity" />
             <CardHeader className="pb-6">
               <div className="flex items-center justify-between mb-8">
-                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center">
+                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-md">
                   <Users className="h-7 w-7 text-white" />
                 </div>
                 <Link href="/dashboard/organizer">
-                  <Button size="sm" variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl">
+                  <Button size="sm" variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl shadow-sm">
                     View
                   </Button>
                 </Link>
@@ -308,7 +312,7 @@ export default function HostEventPage() {
               </div>
             </CardHeader>
             
-            <CardContent className="border-t-2 border-gray-100 pt-8">
+            <CardContent className="border-t border-gray-100 pt-8">
               <div className="grid grid-cols-2 gap-x-8 mb-10">
                 <div>
                   <div className="text-5xl font-light text-orange-500 mb-2">Track</div>
@@ -320,8 +324,8 @@ export default function HostEventPage() {
                 </div>
               </div>
               
-              <Link href="/dashboard/organizer" className="inline-flex items-center text-gray-900 hover:text-orange-500 transition-colors group">
-                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all">
+              <Link href="/dashboard/organizer" className="inline-flex items-center text-gray-900 hover:text-orange-600 transition-colors group">
+                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all shadow-sm">
                   <ArrowRight className="h-5 w-5" />
                 </div>
                 <span className="text-base font-normal">View Participants</span>
