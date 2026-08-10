@@ -54,7 +54,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
 interface EventWithClub extends Event {
-  club?: Club;
+  club?: Club | null;
 }
 
 interface TeamMember {
@@ -95,6 +95,8 @@ export default function EventDetailsPage({
     participantYear: '',
     participantGender: '',
     participantAcademicYear: '',
+    participantSkills: '',
+    participantExperience: '',
     // Team data
     teamName: '',
     teamMembers: [] as TeamMember[],
@@ -126,6 +128,19 @@ export default function EventDetailsPage({
         .single();
 
       if (error) throw error;
+
+      // Increment view count in database (run silently without blocking load)
+      try {
+        if (eventData) {
+          const currentViews = (eventData as any).views || 0;
+          await supabase
+            .from('events')
+            .update({ views: currentViews + 1 })
+            .eq('id', params.id);
+        }
+      } catch (viewErr) {
+        console.warn('Failed to update views count:', viewErr);
+      }
 
       // Get fresh registration count
       const { data: regCount } = await supabase
@@ -316,7 +331,7 @@ export default function EventDetailsPage({
         }
 
         // Check if already registered with this email
-        const { data: existingReg } = await supabase
+        const { data: existingReg } = await (supabase as any)
           .from('event_registrations')
           .select('id')
           .eq('event_id', params.id)
