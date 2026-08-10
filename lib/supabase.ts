@@ -177,9 +177,9 @@ export interface Database {
           team_size: string | null
           duration: string | null
           level: "beginner" | "intermediate" | "advanced" | null
-          created_by: string | null
           created_at: string
           updated_at: string
+          views: number
         }
         Insert: {
           id?: string
@@ -217,6 +217,7 @@ export interface Database {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          views?: number
         }
         Update: {
           id?: string
@@ -254,6 +255,7 @@ export interface Database {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          views?: number
         }
         Relationships: [
           {
@@ -476,6 +478,39 @@ export interface Database {
         }
         Relationships: []
       }
+      pending_clubs: {
+        Row: {
+          id: string
+          status: "pending" | "verified" | "expired"
+          expires_at: string
+          created_by: string | null
+          created_at: string
+          club_data: any | null
+          official_email: string
+          pin: string
+        }
+        Insert: {
+          id?: string
+          status?: "pending" | "verified" | "expired"
+          expires_at: string
+          created_by?: string | null
+          created_at?: string
+          club_data?: any | null
+          official_email: string
+          pin: string
+        }
+        Update: {
+          id?: string
+          status?: "pending" | "verified" | "expired"
+          expires_at?: string
+          created_by?: string | null
+          created_at?: string
+          club_data?: any | null
+          official_email?: string
+          pin?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -514,7 +549,7 @@ export interface Database {
 export type User = Database["public"]["Tables"]["users"]["Row"]
 export type Club = Database["public"]["Tables"]["clubs"]["Row"]
 export type Event = Database["public"]["Tables"]["events"]["Row"] & {
-  club?: Club
+  club?: Club | null
 }
 export type ClubMembership = Database["public"]["Tables"]["club_memberships"]["Row"]
 export type EventRegistration = Database["public"]["Tables"]["event_registrations"]["Row"]
