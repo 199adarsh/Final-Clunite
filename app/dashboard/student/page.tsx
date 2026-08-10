@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { getUserFromDatabase } from '@/lib/sync-user';
 import { getUserAvatarUrl } from '@/lib/avatar-utils';
+import { supabase } from '@/lib/supabase';
 
 import {
   Card,
@@ -32,69 +34,18 @@ import {
   Heart,
 } from 'lucide-react';
 
-const achievements = [
-  {
-    title: 'Registered Events',
-    value: '12',
-    change: '+3 this month',
-    icon: Calendar,
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
-  },
-  {
-    title: 'Certificates Earned',
-    value: '8',
-    change: '+2 this semester',
-    icon: Award,
-    color: 'text-emerald-600',
-    bg: 'bg-emerald-50',
-  },
-  {
-    title: 'Events Attended',
-    value: '15',
-    change: '+5 this month',
-    icon: Users,
-    color: 'text-indigo-600',
-    bg: 'bg-indigo-50',
-  },
-  {
-    title: 'QR Scans',
-    value: '23',
-    change: '+8 recent',
-    icon: QrCode,
-    color: 'text-orange-600',
-    bg: 'bg-orange-50',
-  },
-];
-
-const recommendedEvents = [
-  {
-    id: 1,
-    title: 'AI & Machine Learning Workshop',
-    club: 'Tech Club',
-    date: 'Dec 15, 2024',
-    time: '2:00 PM',
-    venue: 'Auditorium A',
-    rating: 4.8,
-    attendees: ['A', 'B', 'C', 'D'],
-  },
-  {
-    id: 2,
-    title: 'Cultural Fest 2024',
-    club: 'Cultural Committee',
-    date: 'Dec 20, 2024',
-    time: '6:00 PM',
-    venue: 'Main Ground',
-    rating: 4.9,
-    attendees: ['E', 'F', 'G'],
-  },
-];
-
 export default function StudentDashboard() {
   const router = useRouter();
   const { user: authUser, loading: authLoading } = useAuth();
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    registeredEvents: 0,
+    attendedEvents: 0,
+    certificates: 0,
+    qrScans: 0
+  });
+  const [recommended, setRecommended] = useState<any[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -104,9 +55,74 @@ export default function StudentDashboard() {
       return;
     }
 
-    getUserFromDatabase(authUser.id)
-      .then(setUserData)
-      .finally(() => setLoading(false));
+    async function fetchDashboardData() {
+      try {
+        setLoading(true);
+        const dbUser = await getUserFromDatabase(authUser!.id);
+        setUserData(dbUser);
+
+        // Fetch user registration stats
+        const { data: regs, error: regsError } = await supabase
+          .from('event_registrations')
+          .select(`
+            id,
+            status,
+            event:events(id, certificates_enabled)
+          `)
+          .eq('user_id', authUser!.id);
+
+        if (!regsError && regs) {
+          const registeredEvents = regs.length;
+          const attendedEvents = regs.filter((r) => r.status === 'attended').length;
+          const certificates = regs.filter((r) => r.status === 'attended' && (r.event as any)?.certificates_enabled).length;
+          const qrScans = regs.filter((r) => r.status === 'attended').length;
+
+          setStats({
+            registeredEvents,
+            attendedEvents,
+            certificates,
+            qrScans
+          });
+        }
+
+        // Fetch recommended events
+        const now = new Date().toISOString();
+        const { data: allEvents, error: eventsError } = await supabase
+          .from('events')
+          .select(`
+            *,
+            club:clubs(*)
+          `)
+          .eq('status', 'published')
+          .gt('registration_deadline', now);
+
+        if (!eventsError && allEvents) {
+          const userCollege = dbUser?.college?.toLowerCase() || '';
+          const userBranch = dbUser?.branch?.toLowerCase() || '';
+          
+          const sorted = [...allEvents].sort((a: any, b: any) => {
+            let scoreA = 0;
+            let scoreB = 0;
+
+            if (a.college?.toLowerCase() === userCollege) scoreA += 10;
+            if (b.college?.toLowerCase() === userCollege) scoreB += 10;
+
+            if (a.title?.toLowerCase().includes(userBranch) || a.description?.toLowerCase().includes(userBranch)) scoreA += 5;
+            if (b.title?.toLowerCase().includes(userBranch) || b.description?.toLowerCase().includes(userBranch)) scoreB += 5;
+
+            return scoreB - scoreA;
+          });
+
+          setRecommended(sorted.slice(0, 5));
+        }
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
   }, [authUser, authLoading, router]);
 
   if (authLoading || loading) {
@@ -124,6 +140,41 @@ export default function StudentDashboard() {
 
   const avatarUrl = getUserAvatarUrl(userData);
 
+  const achievementsList = [
+    {
+      title: 'Registered Events',
+      value: stats.registeredEvents.toString(),
+      change: `${stats.registeredEvents} total`,
+      icon: Calendar,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+    },
+    {
+      title: 'Certificates Earned',
+      value: stats.certificates.toString(),
+      change: `${stats.certificates} total`,
+      icon: Award,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+    },
+    {
+      title: 'Events Attended',
+      value: stats.attendedEvents.toString(),
+      change: `${stats.attendedEvents} total`,
+      icon: Users,
+      color: 'text-indigo-600',
+      bg: 'bg-indigo-50',
+    },
+    {
+      title: 'QR Scans',
+      value: stats.qrScans.toString(),
+      change: `${stats.qrScans} total`,
+      icon: QrCode,
+      color: 'text-orange-600',
+      bg: 'bg-orange-50',
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] px-8 py-6 space-y-10">
       {/* HERO */}
@@ -139,13 +190,13 @@ export default function StudentDashboard() {
             Stay updated, join events & connect with your community.
           </p>
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2 font-medium">
             <Badge className="bg-blue-100 text-blue-700">
-              <Sparkles className="h-3 w-3 mr-1" />5 recommendations
+              <Sparkles className="h-3 w-3 mr-1" /> {recommended.length} recommendations
             </Badge>
 
-            <Badge className="bg-indigo-100 text-indigo-700">
-              <Target className="h-3 w-3 mr-1" />2 events this week
+            <Badge className="bg-indigo-100 text-indigo-700 ml-2">
+              <Target className="h-3 w-3 mr-1" /> {stats.registeredEvents} events registered
             </Badge>
           </div>
         </div>
@@ -164,7 +215,7 @@ export default function StudentDashboard() {
       {/* ACHIEVEMENTS */}
       <div className="rounded-2xl bg-white border border-black/5 p-10">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {achievements.map((item, index) => (
+          {achievementsList.map((item, index) => (
             <div
               key={index}
               className={`rounded-xl border border-black/5 p-6 space-y-4 ${item.bg}`}
@@ -198,124 +249,131 @@ export default function StudentDashboard() {
           {/* Section header */}
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">
-              What’s happening in your clubs
+              Recommended Events for You
             </h2>
 
-            <Badge className="bg-blue-100 text-blue-700">Live updates</Badge>
+            <Badge className="bg-blue-100 text-blue-700">Personalized</Badge>
           </div>
 
-          {recommendedEvents.map((event) => (
-            <div
-              key={event.id}
-              className="
-        rounded-xl
-        border border-black/10
-        bg-white
-        shadow-sm
-        hover:shadow-xl
-        hover:-translate-y-0.5
-        transition
-        overflow-hidden
-      "
-            >
-              {/* CARD HEADER */}
-              <div className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-indigo-200 flex items-center justify-center font-semibold">
-                    {event.club[0]}
-                  </div>
+          {recommended.length === 0 ? (
+            <Card className="rounded-2xl border border-black/5 bg-white p-8 text-center text-muted-foreground">
+              No recommended events found right now. Check back later!
+            </Card>
+          ) : (
+            recommended.map((event) => {
+              const eventDate = new Date(event.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const eventTime = new Date(event.start_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+              const eventVenue = event.venue || event.location || 'TBD';
+              const clubName = event.club?.name || 'Unknown Club';
+              const rating = (event.club?.credibility_score || 4.8).toFixed(1);
 
-                  <div>
-                    <p className="text-sm font-medium">{event.club}</p>
-                    <p className="text-xs text-muted-foreground">
-                      posted an event
-                    </p>
-                  </div>
-                </div>
-
-                <Badge className="bg-purple-100 text-purple-700">
-                  ⭐ {event.rating}
-                </Badge>
-              </div>
-
-              {/* EVENT IMAGE */}
-              <div className="h-44 bg-gray-100">
-                <img
-                  src="https://images.unsplash.com/photo-1523240795612-9a054b0db644"
-                  className="w-full h-full object-cover"
-                  alt="event"
-                />
-              </div>
-
-              {/* CONTENT */}
-              <div className="p-5 space-y-3">
-                <h3 className="font-semibold text-lg">{event.title}</h3>
-
-                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    {event.date}
-                  </span>
-
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    {event.time}
-                  </span>
-
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {event.venue}
-                  </span>
-                </div>
-
-                {/* TAGS */}
-                <div className="flex gap-2 mt-2">
-                  <Badge className="bg-orange-100 text-orange-700">
-                    🔥 Popular
-                  </Badge>
-
-                  <Badge className="bg-emerald-100 text-emerald-700">
-                    🎯 Limited seats
-                  </Badge>
-                </div>
-
-                {/* PEOPLE INTERESTED */}
-                <div className="flex items-center gap-2 mt-3">
-                  <div className="flex -space-x-2">
-                    {event.attendees.map((a, i) => (
-                      <div
-                        key={i}
-                        className="h-7 w-7 rounded-full bg-indigo-200 border border-white flex items-center justify-center text-xs font-medium"
-                      >
-                        {a}
+              return (
+                <div
+                  key={event.id}
+                  className="
+                    rounded-xl
+                    border border-black/10
+                    bg-white
+                    shadow-sm
+                    hover:shadow-xl
+                    hover:-translate-y-0.5
+                    transition
+                    overflow-hidden
+                  "
+                >
+                  {/* CARD HEADER */}
+                  <div className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-indigo-200 flex items-center justify-center font-semibold">
+                        {clubName[0]}
                       </div>
-                    ))}
+
+                      <div>
+                        <p className="text-sm font-medium">{clubName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          posted an event
+                        </p>
+                      </div>
+                    </div>
+
+                    <Badge className="bg-purple-100 text-purple-700">
+                      ⭐ {rating}
+                    </Badge>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">
-                    +{Math.floor(Math.random() * 10) + 5} students interested
-                  </p>
-                </div>
-
-                {/* ACTION BAR */}
-                <div className="flex justify-between items-center mt-3 pt-3 border-t">
-                  <div className="flex gap-4 text-sm text-muted-foreground">
-                    <button className="flex items-center gap-1 hover:text-red-500">
-                      <Heart className="h-4 w-4" /> Like
-                    </button>
-
-                    <button className="flex items-center gap-1 hover:text-gray-900">
-                      <Share2 className="h-4 w-4" /> Share
-                    </button>
+                  {/* EVENT IMAGE */}
+                  <div className="h-44 bg-gray-100">
+                    <img
+                      src={event.image_url || "https://images.unsplash.com/photo-1523240795612-9a054b0db644"}
+                      className="w-full h-full object-cover"
+                      alt="event"
+                    />
                   </div>
 
-                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                    Register
-                  </Button>
+                  {/* CONTENT */}
+                  <div className="p-5 space-y-3">
+                    <h3 className="font-semibold text-lg">{event.title}</h3>
+
+                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {eventDate}
+                      </span>
+
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {eventTime}
+                      </span>
+
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-4 w-4" />
+                        {eventVenue}
+                      </span>
+                    </div>
+
+                    {/* TAGS */}
+                    <div className="flex gap-2 mt-2">
+                      <Badge className="bg-orange-100 text-orange-700">
+                        🔥 Popular
+                      </Badge>
+
+                      {event.max_participants && (
+                        <Badge className="bg-emerald-100 text-emerald-700">
+                          🎯 Max: {event.max_participants}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* PEOPLE INTERESTED */}
+                    <div className="flex items-center gap-2 mt-3">
+                      <p className="text-xs text-muted-foreground font-semibold">
+                        {event.current_participants || 0} students registered so far
+                      </p>
+                    </div>
+
+                    {/* ACTION BAR */}
+                    <div className="flex justify-between items-center mt-3 pt-3 border-t">
+                      <div className="flex gap-4 text-sm text-muted-foreground">
+                        <button className="flex items-center gap-1 hover:text-red-500">
+                          <Heart className="h-4 w-4" /> Like
+                        </button>
+
+                        <button className="flex items-center gap-1 hover:text-gray-900">
+                          <Share2 className="h-4 w-4" /> Share
+                        </button>
+                      </div>
+
+                      <Link href={`/dashboard/student/events/${event.id}`}>
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                          Register
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
 
         {/* SIDE */}
@@ -332,21 +390,25 @@ export default function StudentDashboard() {
                 Scan event QR
               </Button>
 
-              <Button
-                variant="outline"
-                className="w-full justify-start rounded-lg"
-              >
-                <Award className="h-4 w-4 mr-2 text-emerald-600" />
-                Certificates
-              </Button>
+              <Link href="/dashboard/student/events" className="block w-full">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start rounded-lg"
+                >
+                  <Award className="h-4 w-4 mr-2 text-emerald-600" />
+                  Certificates
+                </Button>
+              </Link>
 
-              <Button
-                variant="outline"
-                className="w-full justify-start rounded-lg"
-              >
-                <Calendar className="h-4 w-4 mr-2 text-indigo-600" />
-                My events
-              </Button>
+              <Link href="/dashboard/student/events" className="block w-full">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start rounded-lg"
+                >
+                  <Calendar className="h-4 w-4 mr-2 text-indigo-600" />
+                  My events
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 
@@ -374,7 +436,7 @@ export default function StudentDashboard() {
                 <p className="font-medium">Achievement unlocked</p>
               </div>
               <p className="text-sm text-muted-foreground">
-                You’ve attended 15 events this semester.
+                You’ve attended {stats.attendedEvents} events this semester.
               </p>
               <Button size="sm" variant="outline" className="rounded-lg">
                 View progress
