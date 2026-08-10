@@ -16,6 +16,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
 } from "recharts"
 
 async function getEventAnalytics(eventId: string) {
@@ -116,7 +117,7 @@ async function getEventAnalytics(eventId: string) {
         
         // Handle team registrations
         if (reg.registration_data.team_members) {
-          reg.registration_data.team_members.forEach(member => {
+          reg.registration_data.team_members.forEach((member: any) => {
             const college = member.college || "Other"
             collegeStats.set(college, (collegeStats.get(college) || 0) + 1)
             
@@ -153,11 +154,12 @@ async function getEventAnalytics(eventId: string) {
     registrations: registrations || [],
     dailyRegistrations,
     demographicData,
+    collegeStats,
   }
 }
 
 export default async function EventAnalyticsPage({ params }: { params: { id: string } }) {
-  const { event, registrations, dailyRegistrations, demographicData } = await getEventAnalytics(params.id)
+  const { event, registrations, dailyRegistrations, demographicData, collegeStats } = await getEventAnalytics(params.id)
 
   if (!event) {
     return <div>Event not found</div>
@@ -188,11 +190,8 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
     return sum + 1;
   }, 0) / registrations.length || 1;
   
-  // For page views, calculate based on registrations and assumed bounce rate
-  const bounceRate = 0.65 // Assume 65% bounce rate
-  const conversionRate = 0.15 // Assume 15% conversion rate from views to registrations
-  const estimatedViews = Math.ceil(totalRegistrations / (conversionRate * (1 - bounceRate)))
-  const pageViews = Math.max(estimatedViews, totalRegistrations * 4)
+  // Use actual views from database, fallback to registrations count
+  const pageViews = Math.max((event as any).views || 0, totalRegistrations)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6">
@@ -341,7 +340,7 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Page Views</p>
-                <p className="text-3xl font-black text-gray-900">1,247</p>
+                <p className="text-3xl font-black text-gray-900">{pageViews.toLocaleString()}</p>
                 <div className="flex items-center text-sm">
                   <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
                   <span className="text-green-600 font-medium">High visibility</span>
@@ -418,7 +417,7 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
                     cy="50%"
                     outerRadius={100}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={(props: any) => `${props.name} (${(props.percent * 100).toFixed(0)}%)`}
                   >
                     {demographicData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -434,7 +433,7 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
                     }}
                   />
                   <Legend 
-                    formatter={(value, entry) => {
+                    formatter={(value: any, entry: any) => {
                       return <span style={{ color: entry.color }}>{value}</span>;
                     }}
                   />
@@ -475,10 +474,10 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
                       <td className="p-3">
                         <Badge 
                           variant={
-                            registration.status === "confirmed" ? "success" : 
+                            (registration.status === "confirmed" ? "default" : 
                             registration.status === "cancelled" ? "destructive" : 
                             registration.status === "pending" ? "outline" : 
-                            "default"
+                            "default") as any
                           }
                         >
                           {registration.status ? registration.status.charAt(0).toUpperCase() + registration.status.slice(1) : 'Confirmed'}
