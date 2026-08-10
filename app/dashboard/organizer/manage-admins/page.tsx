@@ -95,7 +95,7 @@ export default function ManageAdminsPage() {
         .from('club_memberships')
         .select(`
           *,
-          user:users(*)
+          user:users!club_memberships_user_id_fkey(*)
         `)
         .eq('club_id', clubId)
         .eq('role', 'admin')
@@ -150,14 +150,6 @@ export default function ManageAdminsPage() {
         return
       }
 
-      // Check if already an admin
-      const existing = admins.find(a => a.user_id === userData.id)
-      if (existing) {
-        toast.error('User is already an admin of this club')
-        setAdding(false)
-        return
-      }
-
       const clubId = sessionStorage.getItem('selectedClubId')
       if (!clubId) {
         toast.error('No club selected')
@@ -165,20 +157,51 @@ export default function ManageAdminsPage() {
         return
       }
 
-      // Add as admin
-      const { error: addError } = await supabase
+      // Check if already has any membership in this club
+      const { data: existingMembership, error: fetchErr } = await supabase
         .from('club_memberships')
-        .insert({
-          user_id: userData.id,
-          club_id: clubId,
-          role: 'admin',
-          is_owner: false,
-          verified_via_pin: false,
-          invited_by: authUser!.id,
-          invited_at: new Date().toISOString()
-        })
+        .select('*')
+        .eq('user_id', userData.id)
+        .eq('club_id', clubId)
+        .maybeSingle()
 
-      if (addError) throw addError
+      if (fetchErr) throw fetchErr
+
+      if (existingMembership) {
+        if (existingMembership.role === 'admin') {
+          toast.error('User is already an admin of this club')
+          setAdding(false)
+          return
+        }
+
+        // Upgrade membership to admin role
+        const { error: updateError } = await supabase
+          .from('club_memberships')
+          .update({
+            role: 'admin',
+            is_owner: false,
+            invited_by: authUser!.id,
+            invited_at: new Date().toISOString()
+          })
+          .eq('id', existingMembership.id)
+
+        if (updateError) throw updateError
+      } else {
+        // Add as admin
+        const { error: addError } = await supabase
+          .from('club_memberships')
+          .insert({
+            user_id: userData.id,
+            club_id: clubId,
+            role: 'admin',
+            is_owner: false,
+            verified_via_pin: false,
+            invited_by: authUser!.id,
+            invited_at: new Date().toISOString()
+          })
+
+        if (addError) throw addError
+      }
 
       // Update user role to organizer
       await supabase
