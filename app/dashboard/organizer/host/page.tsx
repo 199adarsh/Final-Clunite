@@ -37,6 +37,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function HostEventPage() {
   const router = useRouter();
+  const { user: authUser } = useAuth();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
   const [selectedClubName, setSelectedClubName] = useState<string | null>(null);
@@ -62,26 +63,45 @@ export default function HostEventPage() {
 
     setSelectedClubId(clubId);
     setSelectedClubName(clubName);
-    loadUserClubs(clubId);
     fetchClubStats(clubId);
   }, []);
 
-  const loadUserClubs = async (currentClubId: string) => {
+  useEffect(() => {
+    if (authUser) {
+      loadUserClubs();
+    }
+  }, [authUser]);
+
+  const loadUserClubs = async () => {
     try {
-      const { data, error } = await supabase
+      if (!authUser) return;
+
+      const { data: memberships, error: membershipsError } = await supabase
         .from('club_memberships')
-        .select(
-          `
+        .select(`
           club:clubs(id, name)
-        `
-        )
+        `)
+        .eq('user_id', authUser.id)
         .eq('role', 'admin');
 
-      if (!error && data) {
-        const clubs = data
+      const { data: createdClubs, error: createdClubsError } = await supabase
+        .from('clubs')
+        .select('id, name')
+        .eq('created_by', authUser.id);
+
+      if (!membershipsError || !createdClubsError) {
+        const clubsFromMemberships = (memberships || [])
           .map((m: any) => m.club)
           .filter((club: any) => club && club.id);
-        setUserClubs(clubs);
+        const clubsFromCreated = createdClubs || [];
+
+        // Combine and deduplicate
+        const allClubs = [...clubsFromMemberships, ...clubsFromCreated];
+        const uniqueClubs = Array.from(
+          new Map(allClubs.map((club) => [club.id, club])).values()
+        );
+
+        setUserClubs(uniqueClubs);
       }
     } catch (err) {
       console.error('Error loading clubs:', err);

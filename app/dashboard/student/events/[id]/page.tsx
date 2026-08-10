@@ -451,30 +451,19 @@ export default function EventDetailsPage({
         },
       };
 
-      // Insert the registration
+      const participantCount = event.team_size === 'solo'
+        ? 1
+        : registrationData.teamMembers.length;
+
+      // Call database atomic function register_for_event via RPC
       const { data: newRegistration, error: registrationError } = await supabase
-        .from('event_registrations')
-        .insert(registrationPayload)
-        .select()
-        .single();
-
-      if (registrationError) {
-        throw new Error(
-          registrationError.message || 'Failed to save registration'
-        );
-      }
-
-      // Update the participant count in the events table
-      const { error: updateError } = await supabase
-        .from('events')
-        .update({
-          current_participants:
-            currentEvent.current_participants +
-            (event.team_size === 'solo'
-              ? 1
-              : registrationData.teamMembers.length),
-        })
-        .eq('id', params.id);
+        .rpc('register_for_event', {
+          p_event_id: params.id,
+          p_user_id: user.id,
+          p_team_name: event.team_size !== 'solo' ? registrationData.teamName : null,
+          p_registration_data: registrationPayload.registration_data,
+          p_participant_count: participantCount
+        });
 
       if (registrationError) {
         console.error('Registration error:', registrationError);
@@ -489,11 +478,6 @@ export default function EventDetailsPage({
 
       // Log successful registration
       console.log('Registration saved successfully');
-
-      if (updateError) {
-        console.error('Failed to update participant count:', updateError);
-        // Don't throw here since registration was successful
-      }
 
       // Update UI state
       setRegistrationStatus('success');

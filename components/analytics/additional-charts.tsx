@@ -325,7 +325,7 @@ export function ExpenseBreakdownChart({ data }: { data: any[] }) {
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={({ category, percentage }) => `${category}: ${percentage.toFixed(0)}%`}
+              label={({ category, percentage }: { category: any, percentage: any }) => `${category}: ${percentage.toFixed(0)}%`}
               outerRadius={100}
               fill="#8884d8"
               dataKey="amount"
@@ -389,7 +389,7 @@ export function ParticipantsByGenderChart({ data }: { data: any[] }) {
               paddingAngle={5}
               dataKey="count"
               animationDuration={1500}
-              label={({ name, percentage }) => `${name}: ${percentage.toFixed(0)}%`}
+              label={({ name, percentage }: { name: any, percentage: any }) => `${name}: ${percentage.toFixed(0)}%`}
             >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
