@@ -233,8 +233,8 @@ export default function CreateEventPage() {
         club_id: selectedClubId,
         college: "Tech University",
         category: formData.category,
-        type: formData.type,
-        mode: formData.mode,
+        type: formData.type as any,
+        mode: formData.mode as any,
         venue: formData.venue.trim() || null,
         start_date: startDateTime,
         end_date: endDateTime,
@@ -243,7 +243,7 @@ export default function CreateEventPage() {
         current_participants: 0,
         entry_fee: formData.entryFee ? Number.parseFloat(formData.entryFee) : 0,
         prize_pool: formData.prizePool ? Number.parseFloat(formData.prizePool) : null,
-        status: isDraft ? "draft" : "published",
+        status: (isDraft ? "draft" : "published") as any,
         tags: formData.tags
           ? formData.tags
               .split(",")
@@ -262,8 +262,8 @@ export default function CreateEventPage() {
           qr_enabled: formData.enableQR,
           certificates_enabled: formData.enableCertificates,
         },
-        team_size: formData.teamSize,
-        level: formData.level,
+        team_size: formData.teamSize as any,
+        level: formData.level as any,
         duration: formData.endDate && formData.endTime ? "Multi-day" : "1 day",
         image_url: bannerUrl,
         created_by: userId,

@@ -146,7 +146,7 @@ export default function EventParticipantsPage() {
           `"${leader.user?.email || ""}"`,
           `"${leader.user?.college || ""}"`,
           `"${leader.registration_data?.participant_details?.branch || leader.registration_data?.additional_info?.branch || ""}"`,
-          `"${leader.user?.phone || ""}"`,
+          `"${(leader.user as any)?.phone || ""}"`,
         ]
         
         // Add member details (up to 3 more members for max team size of 4)
@@ -157,7 +157,7 @@ export default function EventParticipantsPage() {
               `"${members[i].user?.email || ""}"`,
               `"${members[i].user?.college || ""}"`,
               `"${members[i].registration_data?.participant_details?.branch || members[i].registration_data?.additional_info?.branch || ""}"`,
-              `"${members[i].user?.phone || ""}"`
+              `"${(members[i].user as any)?.phone || ""}"`
             )
           } else {
             row.push('""', '""', '""', '""', '""') // Empty member slots
@@ -198,7 +198,7 @@ export default function EventParticipantsPage() {
           `"${p.user?.email || ""}"`,
           `"${p.user?.college || ""}"`,
           `"${p.registration_data?.participant_details?.branch || p.registration_data?.additional_info?.branch || ""}"`,
-          `"${p.user?.phone || ""}"`,
+          `"${(p.user as any)?.phone || ""}"`,
           `"${p.status}"`
         ].join(","))
       ].join("\n")
