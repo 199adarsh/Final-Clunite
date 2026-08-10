@@ -52,7 +52,7 @@ export default function VerifyClubPage() {
   const loadPendingClub = async (id: string) => {
     try {
       const { data, error } = await supabase
-        .from('pending_clubs')
+        .from('pending_clubs_public')
         .select('*')
         .eq('id', id)
         .eq('status', 'pending')
@@ -106,35 +106,16 @@ export default function VerifyClubPage() {
         return;
       }
 
-      // 3. Verify PIN matches
-      if (pin !== pendingClubData.pin) {
-        toast.error('Invalid PIN. Please check your email and try again.');
-        setLoading(false);
-        return;
-      }
-
-      // 4. Check authentication
+      // 3. Check authentication
       if (!authUser) {
         toast.error('You must be logged in to verify a club');
         setLoading(false);
         return;
       }
 
-      console.log('PIN and club name verified! Creating club now...');
+      console.log('Club name verified! Uploading banner if exists and creating club...');
 
-      // 4. Ensure user exists in database
-      const userSyncResult = await ensureUserExists(authUser, {
-        college: pendingClubData.club_data.college,
-      });
-
-      if (!userSyncResult.success) {
-        console.error('Failed to sync user:', userSyncResult.error);
-        toast.error('Failed to verify user account. Please try again.');
-        setLoading(false);
-        return;
-      }
-
-      // 5. Upload banner NOW (after PIN verification)
+      // 4. Upload banner NOW (after club name check)
       let bannerUrl = null;
       const pendingBanner = sessionStorage.getItem('pendingBannerFile');
       if (pendingBanner) {
@@ -168,77 +149,28 @@ export default function VerifyClubPage() {
         }
       }
 
-      // 6. NOW CREATE THE CLUB (after PIN verification and banner upload)
-      const { data: club, error: clubError } = await supabase
-        .from('clubs')
-        .insert({
-          name: pendingClubData.club_data.name,
-          tagline: pendingClubData.club_data.tagline,
-          description: pendingClubData.club_data.description,
-          vision: pendingClubData.club_data.vision,
-          category: pendingClubData.club_data.category,
-          college: pendingClubData.club_data.college,
-          founding_date: pendingClubData.club_data.founding_date,
-          contact_email: pendingClubData.club_data.contact_email,
-          faculty_in_charge: pendingClubData.club_data.faculty_in_charge,
-          banner_url: bannerUrl,
-          is_verified: true, // Verified via PIN
-          created_by: authUser.id,
-          members_count: 1,
-          events_hosted_count: 0,
-          credibility_score: 0,
-        })
-        .select()
-        .single();
+      // 5. Call `/api/verify-club` route which executes atomic verify_and_create_club procedure on server
+      const verifyResponse = await fetch('/api/verify-club', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pendingClubId,
+          pin,
+          userId: authUser.id,
+          bannerUrl,
+        }),
+      });
 
-      if (clubError || !club) {
-        console.error('Club creation error:', clubError);
-        toast.error(
-          `Failed to create club: ${clubError?.message || 'Unknown error'}`
-        );
-        setLoading(false);
-        return;
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to verify and create club');
       }
 
-      console.log('✅ Club created successfully:', club.id);
+      const { club } = await verifyResponse.json();
 
-      // 7. Add user as club owner/admin
-      const { error: membershipError } = await supabase
-        .from('club_memberships')
-        .insert({
-          user_id: authUser.id,
-          club_id: club.id,
-          role: 'admin',
-          is_owner: true,
-          verified_via_pin: true,
-        });
-
-      if (membershipError) {
-        console.error('Membership creation error:', membershipError);
-        toast.error(`Failed to add as admin: ${membershipError.message}`);
-        setLoading(false);
-        return;
-      }
-
-      // 8. Update pending_clubs status
-      await supabase
-        .from('pending_clubs')
-        .update({
-          status: 'verified',
-          club_id: club.id,
-          used_count: 1,
-          first_used_by: authUser.id,
-          first_used_at: new Date().toISOString(),
-        })
-        .eq('id', pendingClubId);
-
-      // 9. Update user role to organizer
-      await supabase
-        .from('users')
-        .update({ role: 'organizer' })
-        .eq('id', authUser.id);
-
-      // 10. Store club info in sessionStorage for immediate access
+      // 6. Store club info in sessionStorage for immediate access
       sessionStorage.setItem('selectedClubId', club.id);
       sessionStorage.setItem('selectedClubName', club.name);
       sessionStorage.setItem('hostVerified', 'true');
@@ -247,7 +179,7 @@ export default function VerifyClubPage() {
       sessionStorage.removeItem('pendingClubId');
       sessionStorage.removeItem('pendingBannerFile');
 
-      // 11. Success!
+      // 7. Success!
       setVerified(true);
       toast.success(
         'Congratulations! Club created successfully. You are now the club owner!'

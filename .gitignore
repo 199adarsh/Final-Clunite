@@ -114,3 +114,10 @@ Final-Clunite/
 # package-lock.json
 # pnpm-lock.yaml
 # yarn.lock
+
+venv/
+.vscode/
+.github/
+docs/
+EMERGENCY_FIX.sql
+RUN_THESE_MIGRATIONS.sql

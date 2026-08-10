@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { supabase, type Event, type Club } from "@/lib/supabase"
 
 interface EventWithClub extends Event {
-  club?: Club
+  club?: Club | null
 }
 
 export function useEvents() {

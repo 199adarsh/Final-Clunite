@@ -25,10 +25,14 @@ export default function HostVerificationPage() {
   const [isSending, setIsSending] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(0)
 
-  // Pre-fill user email if logged in
+  // Pre-fill user email and club name if available
   useEffect(() => {
     if (authUser?.email) {
       setUserEmail(authUser.email)
+    }
+    const storedClubName = sessionStorage.getItem('selectedClubName')
+    if (storedClubName) {
+      setClubName(storedClubName)
     }
   }, [authUser])
 
@@ -42,33 +46,43 @@ export default function HostVerificationPage() {
     try {
       setError("")
       setIsSending(true)
-      const clubId = sessionStorage.getItem('selectedClubId')
       if (!authUser) {
         setError("Please log in first")
         setIsSending(false)
         return
       }
-      let resolvedClubId = clubId
-      if (!resolvedClubId) {
-        if (!clubName) {
-          setError("Enter your club name or select a club first")
-          setIsSending(false)
-          return
-        }
+      
+      let resolvedClubId = null
+      
+      if (clubName) {
+        // Always prioritize the typed club name to resolve the correct club ID
         const { data: memberships } = await supabase
           .from('club_memberships')
           .select('club_id, club:clubs(name)')
           .eq('user_id', authUser.id)
           .eq('role', 'admin')
-        const match = (memberships || []).find((m: any) => (m.club?.name || '').toLowerCase() === clubName.toLowerCase())
+          
+        const match = (memberships || []).find(
+          (m: any) => (m.club?.name || '').toLowerCase() === clubName.trim().toLowerCase()
+        )
+        
         if (!match) {
-          setError("No admin access found for a club with that name")
+          setError(`No admin access found for a club named "${clubName}"`)
           setIsSending(false)
           return
         }
         resolvedClubId = match.club_id
         sessionStorage.setItem('selectedClubId', resolvedClubId)
-        sessionStorage.setItem('selectedClubName', clubName)
+        sessionStorage.setItem('selectedClubName', clubName.trim())
+      } else {
+        // Fallback to session storage if input is empty
+        resolvedClubId = sessionStorage.getItem('selectedClubId')
+      }
+
+      if (!resolvedClubId) {
+        setError("Enter your club name or select a club first")
+        setIsSending(false)
+        return
       }
       const res = await fetch('/api/club-access/send-otp', {
         method: 'POST',
@@ -114,29 +128,40 @@ export default function HostVerificationPage() {
         return
       }
 
-      let clubId = sessionStorage.getItem('selectedClubId')
-      let selectedName = sessionStorage.getItem('selectedClubName') || clubName
-      if (!clubId) {
-        if (!clubName) {
-          setError("Enter your club name or select a club first")
-          setIsSubmitting(false)
-          return
-        }
+      let clubId = null
+      let selectedName = clubName
+
+      if (clubName) {
+        // Resolve using the typed club name
         const { data: memberships } = await supabase
           .from('club_memberships')
           .select('club_id, club:clubs(name)')
           .eq('user_id', authUser.id)
           .eq('role', 'admin')
-        const match = (memberships || []).find((m: any) => (m.club?.name || '').toLowerCase() === clubName.toLowerCase())
+        
+        const match = (memberships || []).find(
+          (m: any) => (m.club?.name || '').toLowerCase() === clubName.trim().toLowerCase()
+        )
+        
         if (!match) {
-          setError("No admin access found for a club with that name")
+          setError(`No admin access found for a club named "${clubName}"`)
           setIsSubmitting(false)
           return
         }
         clubId = match.club_id
-        selectedName = clubName
+        selectedName = match.club?.name || clubName
         sessionStorage.setItem('selectedClubId', clubId)
         sessionStorage.setItem('selectedClubName', selectedName)
+      } else {
+        // Fallback to session storage if input is empty
+        clubId = sessionStorage.getItem('selectedClubId')
+        selectedName = sessionStorage.getItem('selectedClubName') || ''
+      }
+
+      if (!clubId) {
+        setError("Enter your club name or select a club first")
+        setIsSubmitting(false)
+        return
       }
 
       // Verify OTP
