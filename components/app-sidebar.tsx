@@ -9,6 +9,7 @@ import {
   Settings,
   LogOut,
   Building2,
+  Calendar,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -33,8 +34,9 @@ import { cn } from '@/lib/utils';
 
 const menuItems = [
   { title: 'Dashboard', url: '/dashboard/student', icon: Home },
-  { title: 'Browse Events', url: '/dashboard/student/browse', icon: Trophy },
+  { title: 'Browse Events', url: '/dashboard/student/browse', icon: Calendar },
   { title: 'My Clubs', url: '/dashboard/student/my-clubs', icon: Building2 },
+  { title: 'Rank', url: '/dashboard/student/rank', icon: Trophy },
   {
     title: 'Certificates',
     url: '/dashboard/student/certificates',
