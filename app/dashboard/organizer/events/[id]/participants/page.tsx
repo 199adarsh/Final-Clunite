@@ -23,8 +23,11 @@ import {
   ArrowLeft,
   MoreHorizontal,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  QrCode,
+  Loader2
 } from "lucide-react"
+import { useEffect } from "react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
@@ -46,6 +49,162 @@ export default function EventParticipantsPage() {
     getParticipantStats,
     updateParticipantStatus 
   } = useEventParticipants(eventId)
+
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const [scanResult, setScanResult] = useState<string | null>(null)
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanDuplicate, setScanDuplicate] = useState<string | null>(null)
+  const [scanLog, setScanLog] = useState<{ name: string; time: string; type: 'success' | 'error' | 'duplicate' }[]>([])
+
+  // Web Audio sound helpers (no dependency)
+  const playBeep = (type: 'success' | 'error' | 'duplicate') => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      if (type === 'success') {
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.35);
+      } else if (type === 'duplicate') {
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.25);
+      } else {
+        osc.frequency.setValueAtTime(220, ctx.currentTime);
+        osc.frequency.setValueAtTime(180, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+      }
+    } catch (e) {
+      // Audio not supported, silently skip
+    }
+  };
+
+  const checkedInCount = participants.filter(p => p.status === 'attended').length;
+
+  useEffect(() => {
+    if (!isScannerOpen) return;
+
+    let html5QrcodeScanner: any = null;
+    const scriptId = 'html5-qrcode-script';
+    
+    const startScanner = () => {
+      try {
+        const Html5QrcodeScanner = (window as any).Html5QrcodeScanner;
+        if (!Html5QrcodeScanner) {
+          console.error("Html5QrcodeScanner library not loaded on window");
+          return;
+        }
+
+        html5QrcodeScanner = new Html5QrcodeScanner(
+          "qr-reader",
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          /* verbose= */ false
+        );
+
+        html5QrcodeScanner.render(
+          async (decodedText: string) => {
+            const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            const processParticipant = async (participant: any, clearScanner: () => Promise<void>) => {
+              // Duplicate scan guard
+              if (participant.status === 'attended') {
+                playBeep('duplicate');
+                const dupMsg = `Already checked in: ${participant.user?.full_name || 'Participant'}`;
+                setScanDuplicate(dupMsg);
+                setScanResult(null);
+                setScanError(null);
+                setScanLog(prev => [{ name: participant.user?.full_name || 'Participant', time: now, type: 'duplicate' }, ...prev.slice(0, 4)]);
+                await clearScanner();
+                return;
+              }
+
+              await clearScanner();
+              const res = await updateParticipantStatus(participant.id, 'attended');
+              if (res.success) {
+                playBeep('success');
+                const msg = `${participant.user?.full_name || 'Participant'}`;
+                setScanResult(msg);
+                setScanDuplicate(null);
+                setScanError(null);
+                setScanLog(prev => [{ name: participant.user?.full_name || 'Participant', time: now, type: 'success' }, ...prev.slice(0, 4)]);
+              } else {
+                playBeep('error');
+                setScanError(`Database update failed: ${res.error || 'Unknown error'}`);
+                setScanLog(prev => [{ name: 'DB Error', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+              }
+            };
+
+            const clearScanner = async () => {
+              if (html5QrcodeScanner) {
+                try { await html5QrcodeScanner.clear(); } catch (e) { console.log("clear error:", e); }
+              }
+            };
+
+            if (decodedText.startsWith("clunite:reg:")) {
+              const regId = decodedText.replace("clunite:reg:", "").trim();
+              const participant = participants.find(p => p.id === regId);
+              if (participant) {
+                await processParticipant(participant, clearScanner);
+              } else {
+                playBeep('error');
+                setScanError(`Ticket valid, but not registered for this event.`);
+                setScanLog(prev => [{ name: 'Unknown ticket', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+              }
+            } else if (decodedText.startsWith("clunite:profile:")) {
+              const userId = decodedText.replace("clunite:profile:", "").trim();
+              const participant = participants.find(p => p.user_id === userId);
+              if (participant) {
+                await processParticipant(participant, clearScanner);
+              } else {
+                playBeep('error');
+                setScanError(`Scanned profile is not registered for this event.`);
+                setScanLog(prev => [{ name: 'Unknown profile', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+              }
+            } else {
+              playBeep('error');
+              setScanError("Invalid QR Code: Not a Clunite ticket or profile.");
+              setScanLog(prev => [{ name: 'Invalid QR', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+            }
+          },
+          (_errorMessage: string) => { /* suppress scan attempt logs */ }
+        );
+        setIsScanning(true);
+      } catch (err: any) {
+        console.error("Scanner initialization error:", err);
+        setScanError(`Camera access error: ${err.message || err}`);
+      }
+    };
+
+    if (!(window as any).Html5QrcodeScanner) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://unpkg.com/html5-qrcode';
+      script.async = true;
+      script.onload = () => { setTimeout(startScanner, 200); };
+      document.body.appendChild(script);
+    } else {
+      startScanner();
+    }
+
+    return () => {
+      if (html5QrcodeScanner) {
+        try { html5QrcodeScanner.clear().catch((err: any) => console.log("Clean error:", err)); } catch (e) { console.log("Cleanup error:", e); }
+      }
+      setIsScanning(false);
+    };
+  }, [isScannerOpen, participants]);
 
   const stats = getParticipantStats()
   const isTeamEvent = eventDetails?.team_size !== 'solo'
@@ -248,122 +407,141 @@ export default function EventParticipantsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6 space-y-8">
       {/* Back Button - Top Left */}
-      <div>
+      <div className="flex items-center gap-4">
         <Link href="/dashboard/organizer/host">
-          <Button variant="outline" className="bg-gradient-to-r from-orange-500 to-rose-500 text-white hover:from-orange-600 hover:to-rose-600 border-0 shadow-md">
+          <Button variant="outline" size="sm" className="bg-white border-slate-200 text-slate-700 shadow-sm rounded-xl hover:bg-slate-50">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Event Management Hub
+            Back to Host Dashboard
           </Button>
         </Link>
       </div>
 
       {/* Header Card */}
-      <Card className="border-2 border-indigo-100 shadow-lg">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-3xl font-bold text-gray-900">Event Participants Dashboard</CardTitle>
-              <CardDescription className="text-lg mt-2">View and manage participants for all events</CardDescription>
+      <Card className="border-0 shadow-md bg-white rounded-2xl p-8 transition-all duration-300">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-black text-slate-900">Event Participants</h1>
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-semibold px-2 py-1">
+                Live Turnout
+              </Badge>
             </div>
-            <div className="flex space-x-2">
-              <Button onClick={exportParticipants} variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-              <Button onClick={sendBulkEmail}>
-                <Mail className="h-4 w-4 mr-2" />
-                Send Bulk Email
-              </Button>
-            </div>
+            <p className="text-slate-600 mt-2 font-medium">
+              View registrations, check attendance records, and manage participant data for your events.
+            </p>
           </div>
-        </CardHeader>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button onClick={() => setIsScannerOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md font-semibold">
+              <QrCode className="h-4 w-4 mr-2" />
+              Scan QR Tickets
+            </Button>
+            <Button onClick={exportParticipants} variant="outline" className="bg-white border-slate-200 text-slate-700 rounded-xl shadow-sm hover:bg-slate-50 font-semibold">
+              <Download className="h-4 w-4 mr-2 text-slate-500" />
+              Export CSV
+            </Button>
+            <Button onClick={sendBulkEmail} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md font-semibold">
+              <Mail className="h-4 w-4 mr-2" />
+              Send Bulk Email
+            </Button>
+          </div>
+        </div>
       </Card>
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300 bg-white rounded-2xl">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</p>
+                <p className="text-3xl font-black text-slate-900">{stats.total}</p>
               </div>
-              <Users className="h-8 w-8 text-blue-600" />
+              <div className="p-3 bg-slate-50 text-slate-600 rounded-xl">
+                <Users className="h-6 w-6" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300 bg-white rounded-2xl">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Registered</p>
-                <p className="text-2xl font-bold text-green-600">{stats.registered}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Registered</p>
+                <p className="text-3xl font-black text-emerald-600">{stats.registered}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-600" />
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                <CheckCircle className="h-6 w-6" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300 bg-white rounded-2xl">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Waitlisted</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.waitlisted}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Waitlisted</p>
+                <p className="text-3xl font-black text-amber-600">{stats.waitlisted}</p>
               </div>
-              <Clock className="h-8 w-8 text-yellow-600" />
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                <Clock className="h-6 w-6" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300 bg-white rounded-2xl">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Attended</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.attended}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Attended</p>
+                <p className="text-3xl font-black text-blue-600">{stats.attended}</p>
               </div>
-              <UserCheck className="h-8 w-8 text-blue-600" />
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                <UserCheck className="h-6 w-6" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300 bg-white rounded-2xl">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Cancelled</p>
-                <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">Cancelled</p>
+                <p className="text-3xl font-black text-red-600">{stats.cancelled}</p>
               </div>
-              <XCircle className="h-8 w-8 text-red-600" />
+              <div className="p-3 bg-red-50 text-red-600 rounded-xl">
+                <XCircle className="h-6 w-6" />
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Participants List */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+      <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
+        <CardHeader className="p-8 border-b border-slate-100 bg-slate-50/20">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle>Participants List</CardTitle>
-              <CardDescription>View and manage all event participants</CardDescription>
+              <CardTitle className="text-xl font-bold text-slate-900">Participants List</CardTitle>
+              <CardDescription className="text-slate-500 font-medium">View and manage all registered event participants</CardDescription>
             </div>
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
                 <Input 
                   placeholder="Search participants..." 
-                  className="pl-10 w-64"
+                  className="pl-10 w-64 bg-slate-50/80 border-slate-200 focus:bg-white rounded-xl transition-colors"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-40 bg-slate-50/80 border-slate-200 rounded-xl">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -377,11 +555,11 @@ export default function EventParticipantsPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-8">
           <Tabs defaultValue="list" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="list">List View</TabsTrigger>
-              <TabsTrigger value="grid">Grid View</TabsTrigger>
+            <TabsList className="bg-slate-100 p-1 rounded-xl w-fit">
+              <TabsTrigger value="list" className="rounded-lg font-semibold px-4 py-2">List View</TabsTrigger>
+              <TabsTrigger value="grid" className="rounded-lg font-semibold px-4 py-2">Grid View</TabsTrigger>
             </TabsList>
 
             <TabsContent value="list" className="space-y-4">
@@ -414,10 +592,10 @@ export default function EventParticipantsPage() {
                 // Team Event View - Show teams with expandable members
                 <div className="space-y-3">
                   {Object.entries(filteredGroupedParticipants).map(([teamName, teamMembers]) => (
-                    <div key={teamName} className="border rounded-lg overflow-hidden">
+                    <div key={teamName} className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white">
                       {/* Team Header */}
                       <div 
-                        className="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                        className="bg-slate-50/50 p-5 cursor-pointer hover:bg-slate-100/60 transition-colors"
                         onClick={() => toggleTeamExpansion(teamName)}
                       >
                         <div className="flex items-center justify-between">
@@ -483,9 +661,9 @@ export default function EventParticipantsPage() {
                                     </div>
 
                                     {/* Additional Registration Info - Only show relevant details */}
-                                    <div className="bg-gray-50 rounded-lg p-3 mt-2">
-                                      <h5 className="text-sm font-medium text-gray-700 mb-2">Additional Information:</h5>
-                                      <div className="space-y-1 text-xs text-gray-600">
+                                     <div className="bg-slate-50/60 rounded-xl p-4 mt-3 border border-slate-100/50">
+                                      <h5 className="text-sm font-semibold text-slate-700 mb-2">Additional Information:</h5>
+                                      <div className="space-y-1 text-xs text-slate-600">
                                         {(participant.registration_data?.participant_details?.branch || participant.registration_data?.additional_info?.branch) && (
                                           <div>
                                             <span className="font-medium">Branch:</span>
@@ -762,6 +940,136 @@ export default function EventParticipantsPage() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* SCANNER MODAL */}
+      {isScannerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border border-black/5 animate-in zoom-in-95 duration-200">
+
+            {/* Modal Header with live counter */}
+            <div className="bg-indigo-600 text-white p-5 flex justify-between items-start">
+              <div className="space-y-1">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <QrCode className="h-5 w-5 animate-pulse" /> QR Check-in Scanner
+                </h3>
+                <p className="text-indigo-100 text-xs">Point camera at a student&apos;s ticket or profile badge</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Live attendance counter */}
+                <div className="bg-white/20 rounded-xl px-4 py-2 text-center min-w-[70px]">
+                  <p className="text-2xl font-black leading-none">{checkedInCount}</p>
+                  <p className="text-indigo-100 text-[10px] font-medium">/ {participants.length} in</p>
+                </div>
+                <button
+                  onClick={() => { setIsScannerOpen(false); setScanResult(null); setScanError(null); setScanDuplicate(null); }}
+                  className="text-white/70 hover:text-white text-2xl font-bold outline-none leading-none mt-1"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Scan Result States */}
+              {scanResult ? (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex items-center gap-4 animate-in fade-in duration-200">
+                  <div className="h-12 w-12 shrink-0 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow">
+                    <CheckCircle className="h-7 w-7" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-bold text-emerald-800 text-sm">✓ Checked in!</p>
+                    <p className="text-emerald-700 font-semibold">{scanResult}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => { setScanResult(null); setScanError(null); setScanDuplicate(null); setIsScannerOpen(false); setTimeout(() => setIsScannerOpen(true), 80); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shrink-0"
+                  >
+                    Next
+                  </Button>
+                </div>
+              ) : scanDuplicate ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center gap-4 animate-in fade-in duration-200">
+                  <div className="h-12 w-12 shrink-0 bg-amber-400 text-white rounded-full flex items-center justify-center shadow">
+                    <UserCheck className="h-7 w-7" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-bold text-amber-800 text-sm">Already checked in</p>
+                    <p className="text-amber-700 font-semibold text-sm">{scanDuplicate}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => { setScanDuplicate(null); setScanResult(null); setScanError(null); setIsScannerOpen(false); setTimeout(() => setIsScannerOpen(true), 80); }}
+                    className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold shrink-0"
+                  >
+                    Next
+                  </Button>
+                </div>
+              ) : scanError ? (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-5 flex items-center gap-4 animate-in fade-in duration-200">
+                  <div className="h-12 w-12 shrink-0 bg-red-500 text-white rounded-full flex items-center justify-center shadow">
+                    <XCircle className="h-7 w-7" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-bold text-red-800 text-sm">Scan Failed</p>
+                    <p className="text-red-600 text-xs">{scanError}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => { setScanResult(null); setScanError(null); setScanDuplicate(null); setIsScannerOpen(false); setTimeout(() => setIsScannerOpen(true), 80); }}
+                    className="bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold shrink-0"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                /* Camera viewfinder */
+                <div className="space-y-3">
+                  <div className="overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 bg-slate-50 relative aspect-square max-w-[260px] mx-auto flex items-center justify-center shadow-inner">
+                    <div id="qr-reader" className="w-full h-full"></div>
+                    {!isScanning && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50">
+                        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                        <p className="text-xs text-muted-foreground">Starting camera...</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-center text-xs text-muted-foreground font-medium">
+                    Grant camera access if prompted · Only Clunite QR codes are accepted
+                  </p>
+                </div>
+              )}
+
+              {/* Scan History Log */}
+              {scanLog.length > 0 && (
+                <div className="border-t border-slate-100 pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recent Scans</p>
+                  <div className="space-y-1.5">
+                    {scanLog.map((entry, i) => (
+                      <div key={i} className={`flex items-center gap-2.5 p-2 rounded-xl text-xs ${
+                        entry.type === 'success' ? 'bg-emerald-50' :
+                        entry.type === 'duplicate' ? 'bg-amber-50' : 'bg-red-50'
+                      }`}>
+                        <span className={`h-5 w-5 shrink-0 flex items-center justify-center rounded-full text-white ${
+                          entry.type === 'success' ? 'bg-emerald-500' :
+                          entry.type === 'duplicate' ? 'bg-amber-400' : 'bg-red-400'
+                        }`}>
+                          {entry.type === 'success' ? '✓' : entry.type === 'duplicate' ? '↩' : '✗'}
+                        </span>
+                        <span className={`font-semibold flex-1 ${
+                          entry.type === 'success' ? 'text-emerald-800' :
+                          entry.type === 'duplicate' ? 'text-amber-800' : 'text-red-700'
+                        }`}>{entry.name}</span>
+                        <span className="text-slate-400 shrink-0">{entry.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
