@@ -25,11 +25,9 @@ import {
   QrCode,
   Clock,
   MapPin,
-  Star,
   Target,
   Sparkles,
   Loader2,
-  MessageCircle,
   Share2,
   Heart,
 } from 'lucide-react';
@@ -236,7 +234,7 @@ export default function StudentDashboard() {
                 <p className="text-sm text-muted-foreground">{item.title}</p>
               </div>
 
-              <p className="text-xs text-muted-foreground">{item.change}</p>
+              <p className="text-xs text-muted-foreground font-medium">{item.change}</p>
             </div>
           ))}
         </div>
@@ -244,9 +242,8 @@ export default function StudentDashboard() {
 
       {/* MAIN + SIDE */}
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* MAIN — Social feed, cleaner & modern */}
+        {/* MAIN — Social feed */}
         <div className="lg:col-span-2 space-y-5">
-          {/* Section header */}
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">
               Recommended Events for You
@@ -381,11 +378,14 @@ export default function StudentDashboard() {
           {/* Quick actions */}
           <Card className="rounded-2xl overflow-hidden border border-black/10 bg-white">
             <CardHeader className="bg-gradient-to-r from-gray-50 to-white">
-              <CardTitle>Quick actions</CardTitle>
+              <CardTitle className="text-slate-900 text-lg">Quick actions</CardTitle>
             </CardHeader>
 
             <CardContent className="space-y-3 mt-2">
-              <Button className="w-full justify-start rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
+              <Button 
+                className="w-full justify-start rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => router.push('/dashboard/student/qr')}
+              >
                 <QrCode className="h-4 w-4 mr-2" />
                 Scan event QR
               </Button>
@@ -415,8 +415,8 @@ export default function StudentDashboard() {
           {/* Invite */}
           <Card className="rounded-2xl overflow-hidden border border-blue-200 bg-blue-50">
             <CardContent className="p-6 space-y-2">
-              <p className="font-medium">Invite friends</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="font-semibold text-blue-900">Invite friends</p>
+              <p className="text-sm text-blue-700/80">
                 Grow the club — share access.
               </p>
               <Button
@@ -433,12 +433,12 @@ export default function StudentDashboard() {
             <CardContent className="p-6 space-y-2">
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-emerald-700" />
-                <p className="font-medium">Achievement unlocked</p>
+                <p className="font-semibold text-emerald-950">Achievement unlocked</p>
               </div>
               <p className="text-sm text-muted-foreground">
                 You’ve attended {stats.attendedEvents} events this semester.
               </p>
-              <Button size="sm" variant="outline" className="rounded-lg">
+              <Button size="sm" variant="outline" className="rounded-lg border-emerald-300 text-emerald-800 hover:bg-emerald-100 bg-white">
                 View progress
               </Button>
             </CardContent>
