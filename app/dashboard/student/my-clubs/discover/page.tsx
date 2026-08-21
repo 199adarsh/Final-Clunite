@@ -1,19 +1,82 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Search, Lightbulb, Users, Calendar, Star, Building2, UserCheck, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Search, Lightbulb, Users, Calendar, Star, Building2, UserCheck, TrendingUp, Loader2 } from 'lucide-react'
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth-context"
+
+function calculateAccuracyScore(club: any, userInterests: string[], userSkills: string[]) {
+  const queryTags = [...userInterests, ...userSkills].map(t => t.toLowerCase());
+  if (queryTags.length === 0) {
+    return { score: 50, matchedTags: [] };
+  }
+
+  const name = (club.name || '').toLowerCase();
+  const description = (club.description || '').toLowerCase();
+  const tagline = (club.tagline || '').toLowerCase();
+  const category = (club.category || '').toLowerCase();
+  const clubText = `${name} ${tagline} ${description} ${category}`;
+
+  let matchedCount = 0;
+  const matchedTagsList: string[] = [];
+
+  queryTags.forEach(tag => {
+    if (clubText.includes(tag)) {
+      matchedCount++;
+      matchedTagsList.push(tag);
+    } else {
+      const stem = tag.substring(0, 4);
+      if (stem.length >= 4 && clubText.includes(stem)) {
+        matchedCount++;
+        matchedTagsList.push(tag);
+      }
+    }
+  });
+
+  let categoryMatch = false;
+  userInterests.forEach(interest => {
+    const iLower = interest.toLowerCase();
+    if (category.includes('tech') && ['technology', 'coding', 'ai/ml', 'robotics', 'web development', 'data science'].includes(iLower)) {
+      categoryMatch = true;
+    }
+    if (category.includes('cultur') && ['arts & culture', 'music', 'photography', 'literature', 'debate'].includes(iLower)) {
+      categoryMatch = true;
+    }
+    if (category.includes('social') && ['social work', 'entrepreneurship'].includes(iLower)) {
+      categoryMatch = true;
+    }
+  });
+
+  const matchRatio = matchedCount / queryTags.length;
+  // Base 40% + 50% match ratio + 10% semantic category match bonus
+  let score = 40 + (matchRatio * 50) + (categoryMatch ? 10 : 0);
+  score = Math.min(Math.round(score), 99);
+
+  return {
+    score,
+    matchedTags: matchedTagsList
+  };
+}
 
 export default function DiscoverClubsPage() {
+  const { user: authUser } = useAuth()
   const [interests, setInterests] = useState<string[]>([])
   const [skills, setSkills] = useState<string[]>([])
+  const [scopePreference, setScopePreference] = useState("same")
+  const [userCollege, setUserCollege] = useState("")
   const [quizCompleted, setQuizCompleted] = useState(false)
+  const [suggestedClubs, setSuggestedClubs] = useState<any[]>([])
+  const [fallbackClubs, setFallbackClubs] = useState<any[]>([])
+  const [hasDirectMatches, setHasDirectMatches] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   const availableInterests = [
     "Technology",
@@ -47,69 +110,21 @@ export default function DiscoverClubsPage() {
     "Networking",
   ]
 
-  // Enhanced mock data for suggested clubs with more recommendation factors
-  const suggestedClubs = [
-    {
-      id: "tech-club",
-      name: "Tech Club",
-      tagline: "Innovate, Code, Create.",
-      members: 250,
-      eventsHosted: 12,
-      logo: "/placeholder.svg?height=60&width=60&text=TC",
-      matchScore: 90,
-      matchedInterests: ["Technology", "Coding", "AI/ML", "Web Development"],
-      popularity: "High",
-      friendsInClub: 5,
-    },
-    {
-      id: "data-science-club",
-      name: "Data Science Club",
-      tagline: "Unlocking Insights from Data.",
-      members: 180,
-      eventsHosted: 8,
-      logo: "/placeholder.svg?height=60&width=60&text=DSC",
-      matchScore: 85,
-      matchedInterests: ["Data Science", "Coding", "Research", "Data Analysis"],
-      popularity: "High",
-      friendsInClub: 3,
-    },
-    {
-      id: "entrepreneurship-cell",
-      name: "Entrepreneurship Cell",
-      tagline: "From Idea to Impact.",
-      members: 300,
-      eventsHosted: 15,
-      logo: "/placeholder.svg?height=60&width=60&text=EC",
-      matchScore: 75,
-      matchedInterests: ["Entrepreneurship", "Marketing", "Problem Solving", "Networking"],
-      popularity: "Very High",
-      friendsInClub: 8,
-    },
-    {
-      id: "robotics-club",
-      name: "Robotics Club",
-      tagline: "Building the Future, One Robot at a Time.",
-      members: 120,
-      eventsHosted: 7,
-      logo: "/placeholder.svg?height=60&width=60&text=RC",
-      matchScore: 88,
-      matchedInterests: ["Technology", "Robotics", "Coding", "Problem Solving"],
-      popularity: "Medium",
-      friendsInClub: 2,
-    },
-    {
-      id: "photography-club",
-      name: "Photography Club",
-      tagline: "Capture the Moment.",
-      members: 100,
-      eventsHosted: 5,
-      logo: "/placeholder.svg?height=60&width=60&text=PC",
-      matchScore: 60,
-      matchedInterests: ["Photography", "Arts & Culture"],
-      popularity: "Medium",
-      friendsInClub: 1,
-    },
-  ]
+  useEffect(() => {
+    async function loadUserCollege() {
+      if (authUser) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('college')
+          .eq('id', authUser.id)
+          .single()
+        if (!error && data) {
+          setUserCollege(data.college)
+        }
+      }
+    }
+    loadUserCollege()
+  }, [authUser])
 
   const handleInterestChange = (interest: string, checked: boolean) => {
     setInterests((prev) => (checked ? [...prev, interest] : prev.filter((i) => i !== interest)))
@@ -119,10 +134,78 @@ export default function DiscoverClubsPage() {
     setSkills((prev) => (checked ? [...prev, skill] : prev.filter((s) => s !== skill)))
   }
 
-  const handleSubmitQuiz = () => {
-    setQuizCompleted(true)
-    // In a real app, you'd send interests/skills to a backend for more sophisticated matching
-    // and consider event attendance history, friends in the club, and popularity.
+  const handleSubmitQuiz = async () => {
+    try {
+      setLoading(true)
+
+      const { data: dbClubs, error: clubsErr } = await supabase
+        .from('clubs')
+        .select('*')
+        .eq('is_verified', true)
+
+      if (clubsErr) throw clubsErr
+
+      const list = dbClubs || []
+
+      const scoredClubs = list.map((club: any) => {
+        const isSameCollege = club.college?.toLowerCase() === userCollege.toLowerCase()
+        const { score, matchedTags } = calculateAccuracyScore(club, interests, skills)
+        
+        let popularity = "Rising"
+        if (club.members_count > 10) popularity = "Very High"
+        else if (club.members_count > 5) popularity = "High"
+        else if (club.members_count > 2) popularity = "Medium"
+
+        return {
+          ...club,
+          matchScore: score,
+          matchedInterests: matchedTags,
+          isSameCollege,
+          popularity
+        }
+      })
+
+      // Partition by scope
+      const targetScopeClubs = scoredClubs.filter((club: any) => {
+        if (scopePreference === 'same') {
+          return club.isSameCollege
+        } else {
+          return !club.isSameCollege
+        }
+      })
+
+      // Accurately filter matches with matchScore >= 60% and matchedInterests
+      const direct = targetScopeClubs
+        .filter((club: any) => club.matchedInterests.length > 0 && club.matchScore >= 60)
+        .sort((a, b) => b.matchScore - a.matchScore)
+
+      if (direct.length > 0) {
+        setSuggestedClubs(direct)
+        setHasDirectMatches(true)
+        setFallbackClubs([])
+      } else {
+        setSuggestedClubs([])
+        setHasDirectMatches(false)
+
+        // General recommendations fallback
+        const fallbackList = scoredClubs
+          .sort((a: any, b: any) => {
+            if (b.matchScore !== a.matchScore) {
+              return b.matchScore - a.matchScore
+            }
+            return (b.members_count || 0) - (a.members_count || 0)
+          })
+          .slice(0, 6)
+
+        setFallbackClubs(fallbackList)
+      }
+
+      setQuizCompleted(true)
+    } catch (err) {
+      console.error('Error suggesting clubs:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -192,24 +275,49 @@ export default function DiscoverClubsPage() {
                 </div>
               </div>
 
-              {/* Optional: Free text for other interests/skills */}
-              <div>
-                <Label htmlFor="other-info" className="text-xl font-semibold text-gray-900 mb-2">
-                  Anything else?
-                </Label>
-                <Textarea
-                  id="other-info"
-                  placeholder="Tell us more about your unique interests or skills..."
-                  rows={3}
-                  className="mt-2"
-                />
+              {/* Club Scope Preference */}
+              <div className="space-y-3 border-t pt-6">
+                <Label className="text-xl font-semibold text-gray-900">Club Scope Preference</Label>
+                <p className="text-sm text-gray-600">Choose whether to view clubs only from your campus or expand search to other colleges.</p>
+                <div className="flex gap-6 mt-2">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="scopePreference"
+                      value="same"
+                      checked={scopePreference === "same"}
+                      onChange={() => setScopePreference("same")}
+                      className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-gray-700 font-semibold">My College Only ({userCollege || "DKTE"})</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="scopePreference"
+                      value="inter"
+                      checked={scopePreference === "inter"}
+                      onChange={() => setScopePreference("inter")}
+                      className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-gray-700 font-semibold">Intercollege (Other Colleges)</span>
+                  </label>
+                </div>
               </div>
 
               <Button
                 onClick={handleSubmitQuiz}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium text-base"
+                disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium text-base flex justify-center items-center h-12"
               >
-                Find My Clubs
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    Finding Clubs...
+                  </>
+                ) : (
+                  "Find My Clubs"
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -221,27 +329,44 @@ export default function DiscoverClubsPage() {
               <p className="text-lg text-gray-600">Based on your interests and skills, here are some clubs you might love.</p>
             </Card>
 
+            {!hasDirectMatches && (
+              <Card className="p-6 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                <h3 className="text-lg font-bold text-amber-800 flex items-center">
+                  ⚠️ No exact matches found for "{scopePreference === 'same' ? 'My College Only' : 'Intercollege'}"
+                </h3>
+                <p className="text-amber-700 text-sm">
+                  We couldn't find any direct matches fitting your interest tags in this scope. However, check out these highly recommended clubs from either your college or other colleges:
+                </p>
+              </Card>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {suggestedClubs.map((club) => (
+              {(hasDirectMatches ? suggestedClubs : fallbackClubs).map((club) => (
                 <Card
                   key={club.id}
                   className="border border-gray-200 hover:shadow-md transition-shadow duration-200 cursor-pointer"
                 >
-                  <Link href={`/dashboard/student/my-clubs/${club.id}`}>
+                  <Link href={`/dashboard/student/my-clubs`}>
                     <CardContent className="p-6">
                       <div className="flex items-center space-x-4 mb-4">
-                        <img src={club.logo || "/placeholder.svg"} alt={`${club.name} Logo`} className="w-16 h-16 rounded-full" />
+                        {club.logo_url ? (
+                          <img src={club.logo_url} alt={`${club.name} Logo`} className="w-16 h-16 rounded-full object-cover border" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-2xl">
+                            {club.name.charAt(0)}
+                          </div>
+                        )}
                         <div>
                           <h3 className="text-xl font-bold text-gray-900">{club.name}</h3>
-                          <p className="text-sm text-gray-600">{club.tagline}</p>
+                          <p className="text-sm text-gray-600 line-clamp-1">{club.tagline || "No tagline"}</p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center text-sm text-gray-600">
                           <Users className="h-4 w-4 mr-2" />
-                          {club.members} Members
+                          {club.members_count || 0} Members
                         </div>
-                        <Badge className="bg-green-100 text-green-700">
+                        <Badge className="bg-green-100 text-green-700 font-semibold">
                           <Star className="h-3 w-3 mr-1" /> {club.matchScore}% Match
                         </Badge>
                       </div>
@@ -251,18 +376,24 @@ export default function DiscoverClubsPage() {
                           Popularity: <span className="font-semibold ml-1">{club.popularity}</span>
                         </div>
                         <div className="flex items-center text-sm text-gray-600">
-                          <UserCheck className="h-4 w-4 mr-2 text-blue-500" />
-                          <span className="font-semibold">{club.friendsInClub}</span> Friends in Club
+                          <Building2 className="h-4 w-4 mr-2 text-blue-500" />
+                          College: <span className="font-semibold ml-1">{club.college}</span>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mb-4">
-                        {club.matchedInterests.map((interest, idx) => (
-                          <Badge key={idx} variant="secondary" className="bg-blue-50 text-blue-700">
-                            {interest}
+                        {club.matchedInterests.length > 0 ? (
+                          club.matchedInterests.map((interest: any, idx: any) => (
+                            <Badge key={idx} variant="secondary" className="bg-blue-50 text-blue-700">
+                              {interest}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                            {club.category}
                           </Badge>
-                        ))}
+                        )}
                       </div>
-                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">View Club Profile</Button>
+                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">View Clubs List</Button>
                     </CardContent>
                   </Link>
                 </Card>

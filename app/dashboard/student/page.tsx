@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { getUserFromDatabase } from '@/lib/sync-user';
 import { getUserAvatarUrl } from '@/lib/avatar-utils';
 import { supabase } from '@/lib/supabase';
-import { cn } from '@/lib/utils';
 
 import {
   Card,
@@ -39,16 +39,11 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     registeredEvents: 0,
-    certificatesEarned: 0,
-    eventsAttended: 0,
-    qrScans: 0,
-    registeredEventsThisMonth: 0,
-    certificatesEarnedThisSemester: 0,
-    eventsAttendedThisMonth: 0,
-    qrScansRecent: 0,
+    attendedEvents: 0,
+    certificates: 0,
+    qrScans: 0
   });
-  const [eventsThisWeek, setEventsThisWeek] = useState(0);
-  const [recommendedEvents, setRecommendedEvents] = useState<any[]>([]);
+  const [recommended, setRecommended] = useState<any[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -58,185 +53,74 @@ export default function StudentDashboard() {
       return;
     }
 
-    async function loadDashboardData() {
+    async function fetchDashboardData() {
       try {
         setLoading(true);
-        // 1. Fetch User Data
         const dbUser = await getUserFromDatabase(authUser!.id);
         setUserData(dbUser);
 
-        // 2. Fetch User Registrations and their linked events
+        // Fetch user registration stats
         const { data: regs, error: regsError } = await supabase
           .from('event_registrations')
           .select(`
             id,
             status,
-            registered_at,
-            events(
-              id,
-              title,
-              start_date,
-              contact_info
-            )
+            event:events(id, certificates_enabled)
           `)
           .eq('user_id', authUser!.id);
 
-        if (regsError) {
-          console.error('Error fetching registrations:', regsError);
+        if (!regsError && regs) {
+          const registeredEvents = regs.length;
+          const attendedEvents = regs.filter((r) => r.status === 'attended').length;
+          const certificates = regs.filter((r) => r.status === 'attended' && (r.event as any)?.certificates_enabled).length;
+          const qrScans = regs.filter((r) => r.status === 'attended').length;
+
+          setStats({
+            registeredEvents,
+            attendedEvents,
+            certificates,
+            qrScans
+          });
         }
 
-        const activeRegs = regs ? regs.filter((r: any) => r.status !== 'cancelled') : [];
-        const attendedRegs = regs ? regs.filter((r: any) => r.status === 'attended') : [];
-
-        // Calculate dynamic stats
-        const now = new Date();
-        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const hundredTwentyDaysAgo = new Date(now.getTime() - 120 * 24 * 60 * 60 * 1000);
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-        const registeredThisMonth = activeRegs.filter((r: any) => new Date(r.registered_at) >= thirtyDaysAgo).length;
-        const certificatesThisSemester = attendedRegs.filter((r: any) => new Date(r.registered_at) >= hundredTwentyDaysAgo).length;
-        const attendedThisMonth = attendedRegs.filter((r: any) => new Date(r.registered_at) >= thirtyDaysAgo).length;
-        const qrScansRecent = attendedRegs.filter((r: any) => new Date(r.registered_at) >= sevenDaysAgo).length;
-
-        setStats({
-          registeredEvents: activeRegs.length,
-          certificatesEarned: attendedRegs.length,
-          eventsAttended: attendedRegs.length,
-          qrScans: attendedRegs.length,
-          registeredEventsThisMonth: registeredThisMonth,
-          certificatesEarnedThisSemester: certificatesThisSemester,
-          eventsAttendedThisMonth: attendedThisMonth,
-          qrScansRecent: qrScansRecent,
-        });
-
-        // Calculate events starting within next 7 days
-        const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        const weekCount = activeRegs.filter((r: any) => {
-          if (!r.events?.start_date) return false;
-          const eventDate = new Date(r.events.start_date);
-          return eventDate >= now && eventDate <= sevenDaysFromNow;
-        }).length;
-        setEventsThisWeek(weekCount);
-
-        // 3. Fetch Recommended Events (Published)
-        const { data: eventsData, error: eventsError } = await supabase
+        // Fetch recommended events
+        const now = new Date().toISOString();
+        const { data: allEvents, error: eventsError } = await supabase
           .from('events')
           .select(`
             *,
-            club:clubs(*),
-            event_registrations(
-              id,
-              status,
-              user_id,
-              user:users(
-                id,
-                full_name,
-                avatar_url
-              )
-            )
+            club:clubs(*)
           `)
-          .eq('status', 'published');
+          .eq('status', 'published')
+          .gt('registration_deadline', now);
 
-        if (eventsError) {
-          console.error('Error fetching events:', eventsError);
-        }
+        if (!eventsError && allEvents) {
+          const userCollege = dbUser?.college?.toLowerCase() || '';
+          const userBranch = dbUser?.branch?.toLowerCase() || '';
+          
+          const sorted = [...allEvents].sort((a: any, b: any) => {
+            let scoreA = 0;
+            let scoreB = 0;
 
-        const userCollege = dbUser?.college?.toLowerCase();
+            if (a.college?.toLowerCase() === userCollege) scoreA += 10;
+            if (b.college?.toLowerCase() === userCollege) scoreB += 10;
 
-        // Suggest only live events whose last date (registration_deadline) has not been crossed
-        const activeEvents = (eventsData || []).filter((event: any) => {
-          if (!event.registration_deadline) return true;
-          return new Date(event.registration_deadline) >= now;
-        });
+            if (a.title?.toLowerCase().includes(userBranch) || a.description?.toLowerCase().includes(userBranch)) scoreA += 5;
+            if (b.title?.toLowerCase().includes(userBranch) || b.description?.toLowerCase().includes(userBranch)) scoreB += 5;
 
-        const formattedEvents = activeEvents
-          // Sort events: put student's college events first, then sort by start_date descending
-          .sort((a: any, b: any) => {
-            const aIsSameCollege = a.college?.toLowerCase() === userCollege;
-            const bIsSameCollege = b.college?.toLowerCase() === userCollege;
-            if (aIsSameCollege && !bIsSameCollege) return -1;
-            if (!aIsSameCollege && bIsSameCollege) return 1;
-            return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
-          })
-          .map((event: any) => {
-            // Filter out cancelled registrations to get active participants
-            const activeRegistrations = (event.event_registrations || []).filter(
-              (reg: any) => reg.status !== 'cancelled'
-            );
-
-            // Get initials of registered users
-            const attendeesInitials = activeRegistrations
-              .map((reg: any) => {
-                const fullName = reg.user?.full_name || 'Student';
-                return fullName.trim().charAt(0).toUpperCase();
-              })
-              .slice(0, 4);
-
-            // Find current user's registration status
-            const currentUserReg = (event.event_registrations || []).find(
-              (reg: any) => reg.user_id === authUser!.id
-            );
-            const userRegistrationStatus = currentUserReg ? currentUserReg.status : null;
-
-            // Date & Time formatting
-            const startDate = new Date(event.start_date);
-            const formattedDate = startDate.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            });
-            const formattedTime = startDate.toLocaleTimeString('en-US', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-
-            // Closed status checks
-            const isFinished = event.status === 'completed' || new Date(event.end_date || event.start_date) < now;
-            const isDeadlinePassed = new Date(event.registration_deadline) < now;
-            const isRegistrationClosed = isFinished || isDeadlinePassed;
-
-            // Calculate days left for registration
-            let daysLeftText = '';
-            if (event.registration_deadline) {
-              const deadlineDate = new Date(event.registration_deadline);
-              const diffTime = deadlineDate.getTime() - now.getTime();
-              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-              if (diffDays > 0) {
-                daysLeftText = diffDays === 1 ? '1 day left' : `${diffDays} days left`;
-              } else if (diffDays === 0) {
-                daysLeftText = 'Closes today';
-              }
-            }
-
-            return {
-              id: event.id,
-              title: event.title,
-              club: event.club?.name || 'Clunite Club',
-              clubLogo: event.club?.logo_url,
-              date: formattedDate,
-              time: formattedTime,
-              venue: event.venue || 'TBA',
-              rating: event.club?.credibility_score ? (event.club.credibility_score / 20).toFixed(1) : '4.5',
-              attendees: attendeesInitials,
-              totalAttendeesCount: activeRegistrations.length,
-              userRegistrationStatus,
-              image_url: event.image_url,
-              isRegistrationClosed,
-              daysLeftText,
-            };
+            return scoreB - scoreA;
           });
 
-        setRecommendedEvents(formattedEvents);
-
+          setRecommended(sorted.slice(0, 5));
+        }
       } catch (err) {
-        console.error('Error loading student dashboard data:', err);
+        console.error('Error fetching dashboard data:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    loadDashboardData();
+    fetchDashboardData();
   }, [authUser, authLoading, router]);
 
   if (authLoading || loading) {
@@ -254,33 +138,27 @@ export default function StudentDashboard() {
 
   const avatarUrl = getUserAvatarUrl(userData);
 
-  const achievements = [
+  const achievementsList = [
     {
       title: 'Registered Events',
       value: stats.registeredEvents.toString(),
-      change: stats.registeredEventsThisMonth > 0 
-        ? `+${stats.registeredEventsThisMonth} this month` 
-        : 'No recent registrations',
+      change: `${stats.registeredEvents} total`,
       icon: Calendar,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
     },
     {
       title: 'Certificates Earned',
-      value: stats.certificatesEarned.toString(),
-      change: stats.certificatesEarnedThisSemester > 0
-        ? `+${stats.certificatesEarnedThisSemester} this semester`
-        : 'No new certificates',
+      value: stats.certificates.toString(),
+      change: `${stats.certificates} total`,
       icon: Award,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
     },
     {
       title: 'Events Attended',
-      value: stats.eventsAttended.toString(),
-      change: stats.eventsAttendedThisMonth > 0
-        ? `+${stats.eventsAttendedThisMonth} this month`
-        : 'No recent events',
+      value: stats.attendedEvents.toString(),
+      change: `${stats.attendedEvents} total`,
       icon: Users,
       color: 'text-indigo-600',
       bg: 'bg-indigo-50',
@@ -288,9 +166,7 @@ export default function StudentDashboard() {
     {
       title: 'QR Scans',
       value: stats.qrScans.toString(),
-      change: stats.qrScansRecent > 0
-        ? `+${stats.qrScansRecent} recent`
-        : 'No recent scans',
+      change: `${stats.qrScans} total`,
       icon: QrCode,
       color: 'text-orange-600',
       bg: 'bg-orange-50',
@@ -312,15 +188,13 @@ export default function StudentDashboard() {
             Stay updated, join events & connect with your community.
           </p>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none">
-              <Sparkles className="h-3 w-3 mr-1" />
-              {recommendedEvents.length} recommendations
+          <div className="mt-4 space-y-2 font-medium">
+            <Badge className="bg-blue-100 text-blue-700">
+              <Sparkles className="h-3 w-3 mr-1" /> {recommended.length} recommendations
             </Badge>
 
-            <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 border-none">
-              <Target className="h-3 w-3 mr-1" />
-              {eventsThisWeek} {eventsThisWeek === 1 ? 'event' : 'events'} this week
+            <Badge className="bg-indigo-100 text-indigo-700 ml-2">
+              <Target className="h-3 w-3 mr-1" /> {stats.registeredEvents} events registered
             </Badge>
           </div>
         </div>
@@ -339,7 +213,7 @@ export default function StudentDashboard() {
       {/* ACHIEVEMENTS */}
       <div className="rounded-2xl bg-white border border-black/5 p-10">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {achievements.map((item, index) => (
+          {achievementsList.map((item, index) => (
             <div
               key={index}
               className={`rounded-xl border border-black/5 p-6 space-y-4 ${item.bg}`}
@@ -371,20 +245,26 @@ export default function StudentDashboard() {
         {/* MAIN — Social feed */}
         <div className="lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-              Explore events around you
+            <h2 className="text-xl font-semibold tracking-tight">
+              Recommended Events for You
             </h2>
 
-            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none">Live updates</Badge>
+            <Badge className="bg-blue-100 text-blue-700">Personalized</Badge>
           </div>
 
-          {recommendedEvents.length === 0 ? (
-            <Card className="rounded-xl border border-black/10 bg-white p-8 text-center">
-              <p className="text-muted-foreground font-medium">No active recommended events found.</p>
+          {recommended.length === 0 ? (
+            <Card className="rounded-2xl border border-black/5 bg-white p-8 text-center text-muted-foreground">
+              No recommended events found right now. Check back later!
             </Card>
           ) : (
-            <div className="space-y-5">
-              {recommendedEvents.slice(0, 3).map((event) => (
+            recommended.map((event) => {
+              const eventDate = new Date(event.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const eventTime = new Date(event.start_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+              const eventVenue = event.venue || event.location || 'TBD';
+              const clubName = event.club?.name || 'Unknown Club';
+              const rating = (event.club?.credibility_score || 4.8).toFixed(1);
+
+              return (
                 <div
                   key={event.id}
                   className="
@@ -392,7 +272,8 @@ export default function StudentDashboard() {
                     border border-black/10
                     bg-white
                     shadow-sm
-                    hover:shadow-md
+                    hover:shadow-xl
+                    hover:-translate-y-0.5
                     transition
                     overflow-hidden
                   "
@@ -400,35 +281,27 @@ export default function StudentDashboard() {
                   {/* CARD HEADER */}
                   <div className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {event.clubLogo ? (
-                        <img
-                          src={event.clubLogo}
-                          className="h-9 w-9 rounded-full object-cover border"
-                          alt="club logo"
-                        />
-                      ) : (
-                        <div className="h-9 w-9 rounded-full bg-indigo-200 flex items-center justify-center font-semibold">
-                          {event.club[0]}
-                        </div>
-                      )}
+                      <div className="h-9 w-9 rounded-full bg-indigo-200 flex items-center justify-center font-semibold">
+                        {clubName[0]}
+                      </div>
 
                       <div>
-                        <p className="text-sm font-medium">{event.club}</p>
+                        <p className="text-sm font-medium">{clubName}</p>
                         <p className="text-xs text-muted-foreground">
                           posted an event
                         </p>
                       </div>
                     </div>
 
-                    <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 border-none">
-                      ⭐ {event.rating}
+                    <Badge className="bg-purple-100 text-purple-700">
+                      ⭐ {rating}
                     </Badge>
                   </div>
 
                   {/* EVENT IMAGE */}
                   <div className="h-44 bg-gray-100">
                     <img
-                      src={event.image_url || 'https://images.unsplash.com/photo-1523240795612-9a054b0db644'}
+                      src={event.image_url || "https://images.unsplash.com/photo-1523240795612-9a054b0db644"}
                       className="w-full h-full object-cover"
                       alt="event"
                     />
@@ -436,108 +309,67 @@ export default function StudentDashboard() {
 
                   {/* CONTENT */}
                   <div className="p-5 space-y-3">
-                    <h3 className="font-semibold text-lg text-slate-900">{event.title}</h3>
+                    <h3 className="font-semibold text-lg">{event.title}</h3>
 
                     <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        {event.date}
+                        {eventDate}
                       </span>
 
                       <span className="flex items-center gap-1">
                         <Clock className="h-4 w-4" />
-                        {event.time}
+                        {eventTime}
                       </span>
 
                       <span className="flex items-center gap-1">
                         <MapPin className="h-4 w-4" />
-                        {event.venue}
+                        {eventVenue}
                       </span>
                     </div>
 
                     {/* TAGS */}
                     <div className="flex gap-2 mt-2">
-                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-none">
+                      <Badge className="bg-orange-100 text-orange-700">
                         🔥 Popular
                       </Badge>
 
-                      <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none">
-                        🎯 Limited seats
-                      </Badge>
-
-                      {event.daysLeftText && (
-                        <Badge className="bg-red-50 text-red-600 hover:bg-red-50 border-none font-medium">
-                          ⏳ {event.daysLeftText}
+                      {event.max_participants && (
+                        <Badge className="bg-emerald-100 text-emerald-700">
+                          🎯 Max: {event.max_participants}
                         </Badge>
                       )}
                     </div>
 
                     {/* PEOPLE INTERESTED */}
                     <div className="flex items-center gap-2 mt-3">
-                      <div className="flex -space-x-2">
-                        {event.attendees.map((a: string, i: number) => (
-                          <div
-                            key={i}
-                            className="h-7 w-7 rounded-full bg-indigo-200 border border-white flex items-center justify-center text-xs font-semibold text-indigo-700"
-                          >
-                            {a}
-                          </div>
-                        ))}
-                      </div>
-
-                      <p className="text-xs text-muted-foreground font-medium">
-                        {event.totalAttendeesCount === 0 && 'Be the first to register!'}
-                        {event.totalAttendeesCount === 1 && '1 student registered'}
-                        {event.totalAttendeesCount > 1 && event.totalAttendeesCount <= 4 && `${event.totalAttendeesCount} students registered`}
-                        {event.totalAttendeesCount > 4 && `+${event.totalAttendeesCount - 4} more students registered`}
+                      <p className="text-xs text-muted-foreground font-semibold">
+                        {event.current_participants || 0} students registered so far
                       </p>
                     </div>
 
                     {/* ACTION BAR */}
                     <div className="flex justify-between items-center mt-3 pt-3 border-t">
                       <div className="flex gap-4 text-sm text-muted-foreground">
-                        <button className="flex items-center gap-1 hover:text-red-500 transition">
+                        <button className="flex items-center gap-1 hover:text-red-500">
                           <Heart className="h-4 w-4" /> Like
                         </button>
 
-                        <button className="flex items-center gap-1 hover:text-gray-900 transition">
+                        <button className="flex items-center gap-1 hover:text-gray-900">
                           <Share2 className="h-4 w-4" /> Share
                         </button>
                       </div>
 
-                      <Button 
-                        size="sm" 
-                        disabled={event.isRegistrationClosed && (!event.userRegistrationStatus || event.userRegistrationStatus === 'cancelled')}
-                        className={cn(
-                          event.userRegistrationStatus === 'registered' && "bg-emerald-600 hover:bg-emerald-700 text-white font-medium",
-                          event.userRegistrationStatus === 'waitlisted' && "bg-amber-500 hover:bg-amber-600 text-white font-medium",
-                          event.userRegistrationStatus === 'attended' && "bg-indigo-600 hover:bg-indigo-700 text-white font-medium",
-                          event.isRegistrationClosed && (!event.userRegistrationStatus || event.userRegistrationStatus === 'cancelled') && "bg-gray-300 text-gray-500 cursor-not-allowed font-medium",
-                          !event.isRegistrationClosed && (!event.userRegistrationStatus || event.userRegistrationStatus === 'cancelled') && "bg-blue-600 hover:bg-blue-700 font-medium"
-                        )}
-                        onClick={() => router.push(`/dashboard/student/events/${event.id}`)}
-                      >
-                        {event.userRegistrationStatus === 'registered' && 'Registered'}
-                        {event.userRegistrationStatus === 'waitlisted' && 'Waitlisted'}
-                        {event.userRegistrationStatus === 'attended' && 'Attended'}
-                        {event.userRegistrationStatus === 'cancelled' && (event.isRegistrationClosed ? 'Registration Closed' : 'Register')}
-                        {!event.userRegistrationStatus && (event.isRegistrationClosed ? 'Registration Closed' : 'Register')}
-                      </Button>
+                      <Link href={`/dashboard/student/events/${event.id}`}>
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                          Register
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 </div>
-              ))}
-
-              <div className="flex justify-center pt-2">
-                <Button 
-                  variant="outline" 
-                  className="rounded-xl border-black/10 text-slate-700 hover:bg-slate-50 bg-white font-medium w-full py-6 text-sm"
-                  onClick={() => router.push('/dashboard/student/browse')}
-                >
-                  View all recommended events ({recommendedEvents.length})
-                </Button>
-              </div>
-            </div>
+              );
+            })
           )}
         </div>
 
@@ -558,23 +390,25 @@ export default function StudentDashboard() {
                 Scan event QR
               </Button>
 
-              <Button
-                variant="outline"
-                className="w-full justify-start rounded-lg"
-                onClick={() => router.push('/dashboard/student/certificates')}
-              >
-                <Award className="h-4 w-4 mr-2 text-emerald-600" />
-                Certificates
-              </Button>
+              <Link href="/dashboard/student/events" className="block w-full">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start rounded-lg"
+                >
+                  <Award className="h-4 w-4 mr-2 text-emerald-600" />
+                  Certificates
+                </Button>
+              </Link>
 
-              <Button
-                variant="outline"
-                className="w-full justify-start rounded-lg"
-                onClick={() => router.push('/dashboard/student/browse')}
-              >
-                <Calendar className="h-4 w-4 mr-2 text-indigo-600" />
-                My events
-              </Button>
+              <Link href="/dashboard/student/events" className="block w-full">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start rounded-lg"
+                >
+                  <Calendar className="h-4 w-4 mr-2 text-indigo-600" />
+                  My events
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 
@@ -601,8 +435,8 @@ export default function StudentDashboard() {
                 <Target className="h-5 w-5 text-emerald-700" />
                 <p className="font-semibold text-emerald-950">Achievement unlocked</p>
               </div>
-              <p className="text-sm text-emerald-800">
-                You’ve attended {stats.eventsAttended} {stats.eventsAttended === 1 ? 'event' : 'events'} this semester.
+              <p className="text-sm text-muted-foreground">
+                You’ve attended {stats.attendedEvents} events this semester.
               </p>
               <Button size="sm" variant="outline" className="rounded-lg border-emerald-300 text-emerald-800 hover:bg-emerald-100 bg-white">
                 View progress
