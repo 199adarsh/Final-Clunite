@@ -119,5 +119,6 @@ venv/
 .vscode/
 .github/
 docs/
+scratch/
 EMERGENCY_FIX.sql
 RUN_THESE_MIGRATIONS.sql
