@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, QrCode, Calendar, MapPin, User, CheckCircle2, ChevronRight, Award } from 'lucide-react';
+import { Loader2, QrCode, Calendar, MapPin, User, CheckCircle2, ChevronRight, Award, Info } from 'lucide-react';
 
 export default function StudentQrPage() {
   const router = useRouter();
@@ -19,6 +19,7 @@ export default function StudentQrPage() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
+  const [certificatesCount, setCertificatesCount] = useState<number>(0);
 
   useEffect(() => {
     if (authLoading) return;
@@ -57,6 +58,49 @@ export default function StudentQrPage() {
         } else {
           setTickets(regs || []);
         }
+
+        // Calculate certificates count for Student ID Badge
+        const certCodes = new Set<string>();
+        if (regs) {
+          regs.forEach((r: any) => {
+            if (r.status === 'attended' && r.events?.contact_info?.certificates_enabled) {
+              certCodes.add(r.id);
+            }
+          });
+        }
+
+        try {
+          const { data: explicitCerts } = await (supabase as any)
+            .from('issued_certificates')
+            .select('id, certificate_code')
+            .or(`user_id.eq.${authUser!.id},recipient_email.eq.${authUser!.email}`);
+          if (explicitCerts) {
+            explicitCerts.forEach((c: any) => certCodes.add(c.certificate_code || c.id));
+          }
+        } catch (e) {
+          console.warn('issued_certificates query warning:', e);
+        }
+
+        try {
+          const localRaw = localStorage.getItem('clunite_issued_certificates');
+          if (localRaw) {
+            const localList = JSON.parse(localRaw);
+            const currentEmail = authUser?.email?.toLowerCase();
+            const currentUserId = authUser?.id;
+            localList.forEach((c: any) => {
+              if (
+                (c.recipient_email && c.recipient_email.toLowerCase() === currentEmail) ||
+                (c.user_id && c.user_id === currentUserId)
+              ) {
+                certCodes.add(c.certificate_code || c.id);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('local storage query warning:', e);
+        }
+
+        setCertificatesCount(certCodes.size);
       } catch (err) {
         console.error('Error loading QR data:', err);
       } finally {
@@ -80,17 +124,17 @@ export default function StudentQrPage() {
   const profileQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(profileQrData)}`;
 
   return (
-    <div className="min-h-screen bg-[#f5f5f7] px-8 py-6 space-y-10">
+    <div className="min-h-screen bg-[#f5f5f7] px-4 sm:px-8 py-6 space-y-6 sm:space-y-10">
       {/* HEADER */}
-      <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl p-6 sm:p-8 border border-black/5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">QR Center</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 tracking-tight">QR Center</h1>
             <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 font-semibold border-blue-200">
               <QrCode className="h-4 w-4 mr-1" /> Scan & Go
             </Badge>
           </div>
-          <p className="text-gray-600 mt-2 font-medium">
+          <p className="text-gray-600 mt-2 font-medium text-xs sm:text-sm">
             Access your event entry tickets and personal verification profile badge.
           </p>
         </div>
@@ -279,8 +323,8 @@ export default function StudentQrPage() {
                     <p className="text-[10px] text-slate-300 font-medium">Attended</p>
                   </div>
                   <div className="flex-1 bg-white/10 rounded-xl p-3 text-center">
-                    <p className="text-xl font-black">{tickets.filter((t: any) => t.status === 'attended').length}</p>
-                    <p className="text-[10px] text-slate-300 font-medium">Check-ins</p>
+                    <p className="text-xl font-black text-amber-300">{certificatesCount}</p>
+                    <p className="text-[10px] text-slate-300 font-medium">Certificates</p>
                   </div>
                 </div>
               </div>
@@ -306,7 +350,7 @@ export default function StudentQrPage() {
             </div>
             {/* Usage hint */}
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3 items-start">
-              <span className="text-lg mt-0.5">💡</span>
+              <Info className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs font-bold text-amber-800">How to use your personal badge</p>
                 <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">

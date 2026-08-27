@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
+import { CollegeAutocomplete } from '@/components/college-autocomplete';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -47,6 +49,7 @@ import {
   BookOpen,
   Zap,
   User,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, type Event, type Club } from '@/lib/supabase';
@@ -106,6 +109,50 @@ export default function EventDetailsPage({
     branch: '',
   });
 
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+
+  const renderFormattedDescription = (text: string) => {
+    if (!text) return '';
+    const paragraphs = text.split('\n');
+    return paragraphs.map((p, idx) => {
+      const isListItem = p.trim().startsWith('- ') || p.trim().startsWith('* ');
+      let content = p;
+      if (isListItem) {
+        content = p.trim().substring(2);
+      }
+      
+      const boldRegex = /\*\*(.*?)\*\*/g;
+      const parts = [];
+      let lastIndex = 0;
+      let match;
+      while ((match = boldRegex.exec(content)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(content.substring(lastIndex, match.index));
+        }
+        parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{match[1]}</strong>);
+        lastIndex = boldRegex.lastIndex;
+      }
+      if (lastIndex < content.length) {
+        parts.push(content.substring(lastIndex));
+      }
+      
+      const renderedContent = parts.length > 0 ? parts : content;
+      
+      if (isListItem) {
+        return (
+          <li key={idx} className="ml-6 list-disc text-gray-700 leading-relaxed text-lg mb-1">
+            {renderedContent}
+          </li>
+        );
+      }
+      return (
+        <p key={idx} className="text-gray-700 leading-relaxed text-lg mb-4 min-h-[1rem]">
+          {renderedContent}
+        </p>
+      );
+    });
+  };
+
   useEffect(() => {
     fetchEventDetails();
     if (user) {
@@ -130,12 +177,13 @@ export default function EventDetailsPage({
       if (error) throw error;
 
       // Increment view count in database (run silently without blocking load)
+      const currentViews = Number((eventData as any)?.views) || 0;
+      const newViews = currentViews + 1;
       try {
         if (eventData) {
-          const currentViews = (eventData as any).views || 0;
           await supabase
             .from('events')
-            .update({ views: currentViews + 1 })
+            .update({ views: newViews })
             .eq('id', params.id);
         }
       } catch (viewErr) {
@@ -145,12 +193,13 @@ export default function EventDetailsPage({
       // Get fresh registration count
       const { data: regCount } = await supabase
         .from('event_registrations')
-        .select('registration_data')
+        .select('status, registration_data')
         .eq('event_id', params.id);
 
-      // Calculate total participants including team members
+      // Calculate total participants including team members (excluding cancelled)
       const totalParticipants =
         regCount?.reduce((total, reg) => {
+          if (reg.status === 'cancelled') return total;
           if (reg.registration_data?.team_members) {
             return total + reg.registration_data.team_members.length;
           } else if (reg.registration_data?.participant_details) {
@@ -159,9 +208,10 @@ export default function EventDetailsPage({
           return total;
         }, 0) || 0;
 
-      // Update the event data with the fresh count
+      // Update the event data with the fresh count & views
       const updatedEvent = {
         ...eventData,
+        views: newViews,
         current_participants: totalParticipants,
       };
 
@@ -317,6 +367,15 @@ export default function EventDetailsPage({
       setErrorMessage('');
       setSuccessMessage('');
 
+      // Validate custom questions (from event creator)
+      if (event.contact_info?.custom_questions) {
+        for (const q of event.contact_info.custom_questions) {
+          if (q.required && !customAnswers[q.id]?.trim()) {
+            throw new Error(`Please answer the required question: "${q.label}"`);
+          }
+        }
+      }
+
       // Validate required fields
       if (event.team_size === 'solo') {
         const member = registrationData.teamMembers[0];
@@ -462,6 +521,7 @@ export default function EventDetailsPage({
           additional_info: {
             dietaryRestrictions: registrationData.dietaryRestrictions?.trim(),
             branch: registrationData.branch?.trim(),
+            custom_responses: customAnswers,
           },
         },
       };
@@ -589,9 +649,44 @@ export default function EventDetailsPage({
       case '2_people':
         return 'Team of 2 People';
       case 'group_4':
+      case 'group_4+':
         return 'Team of 4 People';
       default:
         return 'Individual Participation';
+    }
+  };
+
+  const getParticipationBadge = (teamSize: string) => {
+    switch (teamSize) {
+      case 'solo':
+        return (
+          <Badge className="inline-flex w-fit bg-indigo-50 hover:bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-bold px-2.5 py-1 text-xs rounded-lg items-center gap-1.5 shadow-none shrink-0">
+            <User className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Individual (Solo)</span>
+          </Badge>
+        );
+      case '2_people':
+        return (
+          <Badge className="inline-flex w-fit bg-purple-50 hover:bg-purple-50 text-purple-700 border border-purple-200/80 font-bold px-2.5 py-1 text-xs rounded-lg items-center gap-1.5 shadow-none shrink-0">
+            <Users className="h-3.5 w-3.5 text-purple-600" />
+            <span>Team of 2</span>
+          </Badge>
+        );
+      case 'group_4':
+      case 'group_4+':
+        return (
+          <Badge className="inline-flex w-fit bg-blue-50 hover:bg-blue-50 text-blue-700 border border-blue-200/80 font-bold px-2.5 py-1 text-xs rounded-lg items-center gap-1.5 shadow-none shrink-0">
+            <Users className="h-3.5 w-3.5 text-blue-600" />
+            <span>Team of 4</span>
+          </Badge>
+        );
+      default:
+        return (
+          <Badge className="inline-flex w-fit bg-indigo-50 hover:bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-bold px-2.5 py-1 text-xs rounded-lg items-center gap-1.5 shadow-none shrink-0">
+            <User className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Individual (Solo)</span>
+          </Badge>
+        );
     }
   };
 
@@ -638,17 +733,21 @@ export default function EventDetailsPage({
 
   if (!event) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4">😕</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6">
+        <div className="text-center bg-white p-8 rounded-2xl border border-black/5 shadow-sm max-w-md">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
+            <Calendar className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-1.5">
             Event Not Found
           </h2>
-          <p className="text-gray-600 mb-6">
+          <p className="text-xs text-slate-500 mb-6 leading-relaxed">
             The event you're looking for doesn't exist or has been removed.
           </p>
           <Link href="/dashboard/student/browse">
-            <Button>Back to Browse Events</Button>
+            <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold">
+              Back to Browse Events
+            </Button>
           </Link>
         </div>
       </div>
@@ -659,679 +758,547 @@ export default function EventDetailsPage({
   const isRegistrationOpen = urgency.level !== 'expired';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <Link
-            href="/dashboard/student/browse"
-            className="inline-flex items-center text-gray-600 hover:text-gray-900 font-medium transition-colors"
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* ================= BREADCRUMB & BACK ================= */}
+      <div className="flex items-center justify-between gap-4">
+        <Link href="/dashboard/student/browse">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs h-9 px-3.5 shadow-2xs flex items-center gap-2"
           >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Browse Events
-          </Link>
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Browse
+          </Button>
+        </Link>
+
+        <div className="flex items-center gap-2">
+          {urgency.level === 'expired' ? (
+            <Badge className="bg-slate-900 text-slate-300 border-none text-xs font-bold px-3 py-1 rounded-lg">
+              Registration Closed
+            </Badge>
+          ) : (
+            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-bold px-3 py-1 rounded-lg flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              {urgency.text}
+            </Badge>
+          )}
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="grid lg:grid-cols-4 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-3 space-y-8">
-            {/* Hero Section */}
-            <div className="bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100">
-              <div className="relative h-64 bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-50">
-                <img
-                  src={
-                    event.image_url ||
-                    `/placeholder.svg?height=300&width=800&query=${encodeURIComponent(event.title)}`
-                  }
-                  alt={event.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                <div className="absolute bottom-6 left-6 right-6">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <Badge className="bg-white/90 text-gray-800 font-semibold">
-                      {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
-                    </Badge>
-                    <Badge className="bg-white/90 text-gray-800 font-semibold">
-                      {getModeIcon(event.mode)}
-                      <span className="ml-1">
-                        {event.mode.charAt(0).toUpperCase() +
-                          event.mode.slice(1)}
-                      </span>
-                    </Badge>
-                    {event.prize_pool && (
-                      <Badge className="bg-yellow-500 text-white font-bold">
-                        <Trophy className="h-3 w-3 mr-1" />₹
-                        {event.prize_pool.toLocaleString()}
-                      </Badge>
-                    )}
+      {/* ================= HERO HEADER CARD ================= */}
+      <div className="relative rounded-2xl bg-white border border-slate-200/80 p-6 sm:p-7 shadow-xs overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/70 via-purple-50/30 to-transparent pointer-events-none" />
+
+        <div className="relative z-10 space-y-3">
+          {/* Badges Row */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className="bg-slate-100 text-slate-800 border-slate-200 font-bold text-xs px-2.5 py-0.5 rounded-lg capitalize">
+              {event.category || 'Campus Event'}
+            </Badge>
+
+            <Badge
+              className={cn(
+                'text-xs font-bold px-2.5 py-0.5 rounded-lg capitalize border-none',
+                event.mode === 'online'
+                  ? 'bg-blue-600 text-white'
+                  : event.mode === 'hybrid'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-emerald-600 text-white'
+              )}
+            >
+              {event.mode || 'offline'}
+            </Badge>
+
+            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold text-xs px-2.5 py-0.5 rounded-lg capitalize">
+              {event.type || 'Activity'}
+            </Badge>
+
+            {event.prize_pool && Number(event.prize_pool) > 0 && (
+              <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-xs px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+                <Trophy className="h-3.5 w-3.5 text-amber-600" />
+                ₹{Number(event.prize_pool).toLocaleString()} Prize Pool
+              </Badge>
+            )}
+          </div>
+
+          {/* Event Title */}
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight">
+            {event.title}
+          </h1>
+
+          {/* Organizer & College Meta */}
+          <div className="flex items-center gap-4 text-xs sm:text-sm text-slate-600 font-medium flex-wrap pt-1">
+            {event.club && (
+              <div className="flex items-center gap-2">
+                {event.club.logo_url ? (
+                  <img
+                    src={event.club.logo_url}
+                    alt={event.club.name}
+                    className="w-5 h-5 rounded-md object-cover border border-slate-200"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center">
+                    {event.club.name.charAt(0)}
                   </div>
-                  <h1 className="text-3xl font-bold text-white mb-2">
-                    {event.title}
-                  </h1>
-                  {event.club && (
-                    <div className="flex items-center text-white/90">
-                      <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
-                        <span className="text-sm font-bold">
-                          {event.club.name.charAt(0)}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="font-semibold">{event.club.name}</div>
-                        <div className="flex items-center text-sm">
-                          <Star className="h-3 w-3 mr-1 text-yellow-400 fill-current" />
-                          <span>
-                            {event.club.credibility_score?.toFixed(1) || '4.0'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
+                <span>Hosted by <strong className="text-slate-900 font-bold">{event.club.name}</strong></span>
               </div>
+            )}
+
+            <div className="flex items-center gap-1.5 text-indigo-600 font-semibold">
+              <MapPin className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+              <span>{event.college || event.club?.college || 'DKTE Society\'s TEI'}</span>
             </div>
 
-            {/* Event Details Tabs */}
-            <Tabs
-              defaultValue="overview"
-              className="bg-white rounded-2xl shadow-lg border border-gray-100"
-            >
-              <TabsList className="w-full justify-start border-b border-gray-200 bg-transparent rounded-none p-0">
+            {event.venue && (
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <span>• {event.venue}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ================= 2-COLUMN MAIN CONTENT ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Left Column (Banner + Tabs) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Event Poster Banner */}
+          <div className="relative rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-xs h-48 sm:h-56 w-full group">
+            <img
+              src={
+                event.image_url ||
+                `/placeholder.svg?height=400&width=800&query=${encodeURIComponent(event.title)}`
+              }
+              alt={event.title}
+              className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-300"
+            />
+          </div>
+
+          {/* Event Details Tabs Card */}
+          <Tabs
+            defaultValue="overview"
+            className="bg-white rounded-2xl shadow-xs border border-slate-200/80 overflow-hidden"
+          >
+            <div className="border-b border-slate-200/80 px-4 sm:px-6 bg-slate-50/50">
+              <TabsList className="bg-transparent h-12 p-0 gap-6">
                 <TabsTrigger
                   value="overview"
-                  className="px-6 py-4 font-semibold"
+                  className="px-1 py-3 text-xs font-bold text-slate-500 hover:text-slate-900 data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none shadow-none bg-transparent"
                 >
                   Overview
                 </TabsTrigger>
                 <TabsTrigger
                   value="details"
-                  className="px-6 py-4 font-semibold"
+                  className="px-1 py-3 text-xs font-bold text-slate-500 hover:text-slate-900 data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none shadow-none bg-transparent"
                 >
-                  Details
+                  Schedule & Dates
                 </TabsTrigger>
                 <TabsTrigger
                   value="requirements"
-                  className="px-6 py-4 font-semibold"
+                  className="px-1 py-3 text-xs font-bold text-slate-500 hover:text-slate-900 data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none shadow-none bg-transparent"
                 >
-                  Requirements
+                  Rules & Requirements
                 </TabsTrigger>
                 <TabsTrigger
                   value="organizer"
-                  className="px-6 py-4 font-semibold"
+                  className="px-1 py-3 text-xs font-bold text-slate-500 hover:text-slate-900 data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none shadow-none bg-transparent"
                 >
-                  Organizer
+                  Contact & Organizer
                 </TabsTrigger>
               </TabsList>
+            </div>
 
-              <TabsContent value="overview" className="p-8 space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                    About This Event
-                  </h2>
-                  <p className="text-gray-700 leading-relaxed text-lg">
-                    {event.description}
-                  </p>
+            {/* TAB 1: OVERVIEW */}
+            <TabsContent value="overview" className="p-6 sm:p-7 space-y-6 focus-visible:outline-none">
+              <div className="space-y-3">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                  About This Event
+                </h2>
+                <div className="text-slate-700 leading-relaxed text-sm sm:text-base font-normal">
+                  {renderFormattedDescription(event.description)}
                 </div>
+              </div>
 
-                {/* Key Information */}
-                <div className="grid md:grid-cols-2 gap-6">
-                  <Card className="border border-gray-200">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center text-lg">
-                        <Calendar className="h-5 w-5 mr-2 text-indigo-600" />
-                        Event Schedule
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          Start Date & Time
-                        </div>
-                        <div className="text-gray-600">
-                          {formatDate(event.start_date)} at{' '}
-                          {formatTime(event.start_date)}
-                        </div>
-                      </div>
-                      {event.end_date && (
-                        <div>
-                          <div className="font-semibold text-gray-900">
-                            End Date & Time
-                          </div>
-                          <div className="text-gray-600">
-                            {formatDate(event.end_date)} at{' '}
-                            {formatTime(event.end_date)}
-                          </div>
-                        </div>
-                      )}
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          Duration
-                        </div>
-                        <div className="text-gray-600">{event.duration}</div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-gray-200">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center text-lg">
-                        <Users className="h-5 w-5 mr-2 text-green-600" />
-                        Participation
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          Team Size
-                        </div>
-                        <div className="text-gray-600">
-                          {getTeamSizeDisplay(event.team_size || 'solo')}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          Difficulty Level
-                        </div>
-                        <Badge
-                          className={getLevelColor(event.level || 'beginner')}
-                        >
-                          {(event.level || 'beginner').charAt(0).toUpperCase() +
-                            (event.level || 'beginner').slice(1)}
-                        </Badge>
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          Registered Participants
-                        </div>
-                        <div className="text-gray-600">
-                          {event.current_participants}
-                          {event.max_participants &&
-                            ` / ${event.max_participants}`}{' '}
-                          participants
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Tags */}
-                {event.tags && event.tags.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                      Tags
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {event.tags.map((tag, index) => (
-                        <Badge
-                          key={index}
-                          variant="outline"
-                          className="px-3 py-1"
-                        >
-                          <Tag className="h-3 w-3 mr-1" />
-                          {tag}
-                        </Badge>
-                      ))}
+              {/* Key Information Schedule & Participation Cards */}
+              <div className="grid sm:grid-cols-2 gap-5 pt-1">
+                {/* Event Schedule Card */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/40 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center gap-2.5 pb-3 border-b border-slate-200/70">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
+                      <Calendar className="h-4 w-4" />
                     </div>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="details" className="p-8 space-y-6">
-                <div className="grid md:grid-cols-2 gap-8">
-                  <div className="space-y-6">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                        <MapPin className="h-5 w-5 mr-2 text-red-500" />
-                        Location & Venue
-                      </h3>
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <div className="font-medium text-gray-900">
-                          {event.mode.charAt(0).toUpperCase() +
-                            event.mode.slice(1)}{' '}
-                          Event
-                        </div>
-                        {event.venue && (
-                          <div className="text-gray-600 mt-1">
-                            {event.venue}
-                          </div>
-                        )}
-                        <div className="text-gray-600 mt-1">
-                          {event.college}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                        <Trophy className="h-5 w-5 mr-2 text-yellow-500" />
-                        Rewards & Recognition
-                      </h3>
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        {event.prize_pool ? (
-                          <div>
-                            <div className="font-medium text-gray-900">
-                              Prize Pool: ₹{event.prize_pool.toLocaleString()}
-                            </div>
-                            <div className="text-gray-600 mt-1">
-                              Exciting prizes for winners!
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <div className="font-medium text-gray-900">
-                              Certificates & Recognition
-                            </div>
-                            <div className="text-gray-600 mt-1">
-                              All participants will receive certificates
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      <h3 className="text-sm font-bold text-slate-900 leading-none">Event Schedule</h3>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">Timeline & key dates</p>
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                        <Clock className="h-5 w-5 mr-2 text-blue-500" />
-                        Important Dates
-                      </h3>
-                      <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">
-                            Registration Deadline
-                          </span>
-                          <span className="font-medium text-gray-900">
-                            {formatDate(event.registration_deadline)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Event Date</span>
-                          <span className="font-medium text-gray-900">
-                            {formatDate(event.start_date)}
-                          </span>
-                        </div>
-                        <div className="pt-2 border-t border-gray-200">
-                          <div className={`font-semibold ${urgency.color}`}>
-                            {urgency.text}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                        <Target className="h-5 w-5 mr-2 text-purple-500" />
-                        Category & Type
-                      </h3>
-                      <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Category</span>
-                          <Badge variant="outline">{event.category}</Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Event Type</span>
-                          <Badge variant="outline">
-                            {event.type.charAt(0).toUpperCase() +
-                              event.type.slice(1)}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="requirements" className="p-8">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
-                      <BookOpen className="h-6 w-6 mr-2 text-indigo-600" />
-                      Requirements & Prerequisites
-                    </h2>
-                  </div>
-
-                  {event.requirements && event.requirements.length > 0 ? (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                      <h3 className="font-semibold text-blue-900 mb-4 flex items-center">
-                        <CheckCircle className="h-5 w-5 mr-2" />
-                        What You Need
-                      </h3>
-                      <ul className="space-y-3">
-                        {event.requirements.map((requirement, index) => (
-                          <li key={index} className="flex items-start">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                            <span className="text-blue-800">{requirement}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-                      <Zap className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                      <h3 className="font-semibold text-green-900 mb-2">
-                        No Special Requirements
-                      </h3>
-                      <p className="text-green-700">
-                        This event is open to everyone! Just bring your
-                        enthusiasm and willingness to learn.
+                  <div className="space-y-3.5 pt-0.5">
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Start Date & Time
+                      </span>
+                      <p className="text-sm font-bold text-slate-900">
+                        {formatDate(event.start_date)}{' '}
+                        <span className="text-indigo-600 font-extrabold ml-1">at {formatTime(event.start_date)}</span>
                       </p>
                     </div>
-                  )}
 
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <Card className="border border-gray-200">
-                      <CardHeader>
-                        <CardTitle className="flex items-center text-lg">
-                          <Award className="h-5 w-5 mr-2 text-orange-500" />
-                          Skill Level
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
+                    {event.end_date && (
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                          End Date & Time
+                        </span>
+                        <p className="text-sm font-bold text-slate-900">
+                          {formatDate(event.end_date)}{' '}
+                          <span className="text-indigo-600 font-extrabold ml-1">at {formatTime(event.end_date)}</span>
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Duration
+                      </span>
+                      <p className="text-sm font-bold text-slate-800">
+                        {event.duration || 'Full Day Session'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Participation Rules Card */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/40 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center gap-2.5 pb-3 border-b border-slate-200/70">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-2xs">
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 leading-none">Participation Format</h3>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">Eligibility & rules</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3.5 pt-0.5">
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Team Size
+                      </span>
+                      <div className="pt-0.5">
+                        {getParticipationBadge(event.team_size || 'solo')}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Difficulty Level
+                      </span>
+                      <div className="pt-0.5">
                         <Badge
-                          className={`${getLevelColor(event.level || 'beginner')} text-sm px-3 py-1`}
+                          className={cn(
+                            'inline-flex w-fit font-bold px-2.5 py-0.5 text-xs rounded-md border-none capitalize shadow-none',
+                            event.level === 'advanced'
+                              ? 'bg-purple-100 text-purple-700'
+                              : event.level === 'intermediate'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          )}
                         >
-                          {(event.level || 'beginner').charAt(0).toUpperCase() +
-                            (event.level || 'beginner').slice(1)}{' '}
-                          Level
+                          {event.level || 'Beginner'}
                         </Badge>
-                        <p className="text-gray-600 mt-2">
-                          {event.level === 'beginner' &&
-                            'Perfect for newcomers and those just starting out.'}
-                          {event.level === 'intermediate' &&
-                            'Suitable for those with some prior experience.'}
-                          {event.level === 'advanced' &&
-                            'Designed for experienced participants seeking challenges.'}
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border border-gray-200">
-                      <CardHeader>
-                        <CardTitle className="flex items-center text-lg">
-                          <Users className="h-5 w-5 mr-2 text-green-500" />
-                          Team Formation
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="font-medium text-gray-900 mb-2">
-                          {getTeamSizeDisplay(event.team_size || 'solo')}
-                        </div>
-                        <p className="text-gray-600">
-                          {event.team_size === 'solo' &&
-                            'Individual participation - showcase your personal skills!'}
-                          {event.team_size === '2_people' &&
-                            'Partner up with a friend or colleague for this collaborative experience.'}
-                          {event.team_size === 'group_4+' &&
-                            'Form a team of 4 or more members to tackle this challenge together.'}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="organizer" className="p-8">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                      Event Organizer
-                    </h2>
-                  </div>
-
-                  {event.club ? (
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start space-x-4">
-                          <div className="w-16 h-16 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl">
-                            {event.club.name.charAt(0)}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <h3 className="text-xl font-bold text-gray-900">
-                                {event.club.name}
-                              </h3>
-                              {event.club.is_verified && (
-                                <Badge className="bg-blue-100 text-blue-800">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  Verified
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-gray-600 mb-3">
-                              {event.club.description}
-                            </p>
-                            <div className="flex items-center space-x-6 text-sm text-gray-600">
-                              <div className="flex items-center">
-                                <Users className="h-4 w-4 mr-1" />
-                                <span>{event.club.members_count} members</span>
-                              </div>
-                              <div className="flex items-center">
-                                <Calendar className="h-4 w-4 mr-1" />
-                                <span>
-                                  {event.club.events_hosted_count} events hosted
-                                </span>
-                              </div>
-                              <div className="flex items-center">
-                                <Star className="h-4 w-4 mr-1 text-yellow-500" />
-                                <span>
-                                  {event.club.credibility_score?.toFixed(1)}{' '}
-                                  rating
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="text-center">
-                          <div className="w-16 h-16 bg-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                            <Users className="h-8 w-8 text-gray-400" />
-                          </div>
-                          <h3 className="text-xl font-bold text-gray-900 mb-2">
-                            Independent Event
-                          </h3>
-                          <p className="text-gray-600">
-                            This event is organized independently.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Contact Information */}
-                  {(event.contact_info?.email || event.contact_info?.phone) && (
-                    <Card className="border border-gray-200">
-                      <CardHeader>
-                        <CardTitle className="text-lg">
-                          Contact Information
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {event.contact_info.email && (
-                          <div className="flex items-center">
-                            <Mail className="h-5 w-5 mr-3 text-gray-400" />
-                            <a
-                              href={`mailto:${event.contact_info.email}`}
-                              className="text-indigo-600 hover:text-indigo-800"
-                            >
-                              {event.contact_info.email}
-                            </a>
-                          </div>
-                        )}
-                        {event.contact_info.phone && (
-                          <div className="flex items-center">
-                            <Phone className="h-5 w-5 mr-3 text-gray-400" />
-                            <a
-                              href={`tel:${event.contact_info.phone}`}
-                              className="text-indigo-600 hover:text-indigo-800"
-                            >
-                              {event.contact_info.phone}
-                            </a>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-6 space-y-6">
-              {/* Registration Card */}
-              <Card className="border border-gray-200 shadow-lg">
-                <CardContent className="p-6">
-                  {/* Price */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-3xl font-bold text-gray-900">
-                      {event.entry_fee > 0 ? `₹${event.entry_fee}` : 'Free'}
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Heart className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-gray-400 hover:text-blue-500"
-                      >
-                        <Calendar className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <Share2 className="h-5 w-5" />
-                      </Button>
-                    </div>
-                  </div>
 
-                  {/* Registration Status */}
-                  <div className="mb-4">
-                    <div
-                      className={`font-semibold ${urgency.color} flex items-center`}
-                    >
-                      {urgency.level === 'expired' ? (
-                        <AlertTriangle className="h-4 w-4 mr-2" />
-                      ) : (
-                        <Clock className="h-4 w-4 mr-2" />
-                      )}
-                      {urgency.text}
-                    </div>
-                  </div>
-
-                  {/* Registration Status Messages */}
-                  {registrationStatus === 'success' && (
-                    <Alert className="mb-4 border-green-200 bg-green-50">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <AlertDescription className="text-green-800">
-                        {successMessage ||
-                          "Registration successful! You're all set for the event."}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {registrationStatus === 'error' && (
-                    <Alert className="mb-4 border-red-200 bg-red-50">
-                      <AlertTriangle className="h-4 w-4 text-red-600" />
-                      <AlertDescription className="text-red-800">
-                        {errorMessage}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {isRegistrationOpen ? (
-                    <Button
-                      onClick={handleRegistration}
-                      disabled={registering || isRegistered}
-                      className={`w-full py-3 rounded-lg font-semibold text-base mb-4 ${
-                        isRegistered
-                          ? 'bg-green-600 hover:bg-green-700'
-                          : 'bg-indigo-600 hover:bg-indigo-700'
-                      } text-white`}
-                    >
-                      {isRegistered ? (
-                        <>
-                          <CheckCircle className="h-5 w-5 mr-2" />
-                          Registered
-                        </>
-                      ) : event.team_size === 'solo' ? (
-                        'Register Now'
-                      ) : (
-                        `Register Team`
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      disabled
-                      className="w-full py-3 rounded-lg font-semibold text-base mb-4 bg-gray-300 text-gray-500"
-                    >
-                      Registration Closed
-                    </Button>
-                  )}
-
-                  {/* Event Stats */}
-                  <div className="space-y-3 text-sm border-t border-gray-100 pt-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Participants</span>
-                      <span className="font-semibold text-gray-900">
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Seats Available
+                      </span>
+                      <p className="text-sm font-bold text-slate-900 pt-0.5">
                         {event.current_participants}
-                        {event.max_participants &&
-                          ` / ${event.max_participants}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Event Views</span>
-                      <span className="font-semibold text-gray-900">2,450</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Team Size</span>
-                      <span className="font-semibold text-gray-900">
-                        {getTeamSizeDisplay(event.team_size || 'solo')}
-                      </span>
+                        {event.max_participants && (
+                          <span className="text-slate-500 font-semibold"> / {event.max_participants}</span>
+                        )}{' '}
+                        <span className="text-slate-500 font-normal text-xs ml-1">registered</span>
+                      </p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
-              {/* Event Features */}
-              <Card className="border border-gray-200">
-                <CardHeader>
-                  <CardTitle className="text-lg">Event Features</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {event.contact_info?.certificates_enabled && (
-                    <div className="flex items-center text-sm">
-                      <Award className="h-4 w-4 mr-2 text-green-500" />
-                      <span>Digital Certificates</span>
-                    </div>
-                  )}
-                  {event.contact_info?.qr_enabled && (
-                    <div className="flex items-center text-sm">
-                      <CheckCircle className="h-4 w-4 mr-2 text-blue-500" />
-                      <span>QR Code Attendance</span>
-                    </div>
-                  )}
-                  <div className="flex items-center text-sm">
-                    <Eye className="h-4 w-4 mr-2 text-purple-500" />
-                    <span>Live Event Updates</span>
+              {/* Tags */}
+              {event.tags && event.tags.length > 0 && (
+                <div className="pt-2">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Event Tags
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {event.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/80"
+                      >
+                        <Tag className="h-3 w-3 text-slate-400" />
+                        {tag}
+                      </span>
+                    ))}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* TAB 2: SCHEDULE & DETAILS */}
+            <TabsContent value="details" className="p-6 sm:p-7 space-y-6 focus-visible:outline-none">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-2">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-rose-500" />
+                    Location & Venue
+                  </h3>
+                  <div className="text-xs text-slate-600 space-y-1">
+                    <p className="font-bold text-slate-800">{event.mode?.toUpperCase()} EVENT</p>
+                    <p>{event.venue || 'Main Campus Auditorium'}</p>
+                    <p className="text-slate-500">{event.college || 'DKTE Society\'s TEI'}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-2">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Trophy className="h-4 w-4 text-amber-500" />
+                    Rewards & Recognition
+                  </h3>
+                  <div className="text-xs text-slate-600 space-y-1">
+                    {event.prize_pool ? (
+                      <>
+                        <p className="font-bold text-slate-800">Prize Pool: ₹{Number(event.prize_pool).toLocaleString()}</p>
+                        <p>Exciting cash prizes and certificates for top finalists!</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-bold text-slate-800">Participation Certificates</p>
+                        <p>All registered students receive verifiable digital credentials.</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* TAB 3: REQUIREMENTS */}
+            <TabsContent value="requirements" className="p-6 sm:p-7 space-y-4 focus-visible:outline-none">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-indigo-600" />
+                Participation Rules & Prerequisites
+              </h2>
+
+              {event.requirements && event.requirements.length > 0 ? (
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-2.5">
+                  <h3 className="text-xs font-bold text-indigo-900 uppercase">Requirements Checklist</h3>
+                  <ul className="space-y-2 text-xs text-indigo-950 font-medium">
+                    {event.requirements.map((req, index) => (
+                      <li key={index} className="flex items-center gap-2">
+                        <CheckCircle className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                        <span>{req}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 text-xs text-emerald-900 font-medium flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>No prerequisites required. This event is open to all eligible students!</span>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* TAB 4: ORGANIZER */}
+            <TabsContent value="organizer" className="p-6 sm:p-7 space-y-4 focus-visible:outline-none">
+              <h2 className="text-base font-bold text-slate-900">Host Society Information</h2>
+              {event.club ? (
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    {event.club.logo_url ? (
+                      <img
+                        src={event.club.logo_url}
+                        alt={event.club.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-slate-200"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 font-extrabold flex items-center justify-center">
+                        {event.club.name.charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm">{event.club.name}</h3>
+                      <p className="text-xs text-slate-500">{event.club.category || 'Student Chapter'}</p>
+                    </div>
+                  </div>
+
+                  {event.contact_info && (
+                    <div className="pt-2 border-t border-slate-200/60 space-y-1.5 text-xs text-slate-600 font-medium">
+                      {event.contact_info.email && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-3.5 w-3.5 text-slate-400" />
+                          <a href={`mailto:${event.contact_info.email}`} className="text-indigo-600 hover:underline">
+                            {event.contact_info.email}
+                          </a>
+                        </div>
+                      )}
+                      {event.contact_info.phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-3.5 w-3.5 text-slate-400" />
+                          <a href={`tel:${event.contact_info.phone}`} className="text-indigo-600 hover:underline">
+                            {event.contact_info.phone}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">Organized by Campus Activities Committee.</p>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Right Column (Sticky Action Sidebar) */}
+        <div className="space-y-4">
+          <div className="sticky top-6 space-y-4">
+            {/* Primary Action Card */}
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-2xl overflow-hidden">
+              <CardContent className="p-5 space-y-4">
+                {/* Price & Action Header */}
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                    {event.entry_fee > 0 ? `₹${event.entry_fee}` : 'Free Entry'}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl h-8 w-8"
+                      title="Bookmark event"
+                    >
+                      <Heart className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl h-8 w-8"
+                      title="Share event"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Status Messages */}
+                {registrationStatus === 'success' && (
+                  <Alert className="border-emerald-200 bg-emerald-50 text-emerald-800 text-xs py-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    <AlertDescription>{successMessage || "Registered successfully!"}</AlertDescription>
+                  </Alert>
+                )}
+
+                {registrationStatus === 'error' && (
+                  <Alert className="border-rose-200 bg-rose-50 text-rose-800 text-xs py-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                    <AlertDescription>{errorMessage}</AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Main CTA Button */}
+                {isRegistrationOpen ? (
+                  <Button
+                    onClick={handleRegistration}
+                    disabled={registering || isRegistered}
+                    className={cn(
+                      'w-full h-11 rounded-xl font-bold text-xs sm:text-sm shadow-xs transition-all',
+                      isRegistered
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-slate-900 hover:bg-slate-800 text-white'
+                    )}
+                  >
+                    {isRegistered ? (
+                      <span className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4" />
+                        Registered
+                      </span>
+                    ) : event.team_size === 'solo' ? (
+                      'Register for Event'
+                    ) : (
+                      'Register Team'
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    disabled
+                    className="w-full h-11 rounded-xl font-bold text-xs sm:text-sm bg-slate-100 text-slate-400 border border-slate-200 shadow-none"
+                  >
+                    Registration Closed
+                  </Button>
+                )}
+
+                {/* Metrics Breakdown */}
+                <div className="border-t border-slate-100 pt-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Live Views</p>
+                      <p className="text-sm font-extrabold text-slate-900 mt-0.5">
+                        {(event.views ?? 1).toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Slots Filled</p>
+                      <p className="text-sm font-extrabold text-slate-900 mt-0.5 truncate">
+                        {event.current_participants}
+                        {event.max_participants ? (
+                          <span className="text-xs font-normal text-slate-400">/{event.max_participants}</span>
+                        ) : (
+                          <span className="text-xs font-normal text-slate-400 ml-0.5">joined</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Event Perks Card */}
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-2xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                  Event Perks & Highlights
+                </h3>
+              </div>
+              <CardContent className="p-4 space-y-2 text-xs font-semibold text-slate-700">
+                <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Award className="h-3.5 w-3.5" />
+                  </div>
+                  <span>Digital Certificate Included</span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                  </div>
+                  <span>Instant QR Attendance Check-In</span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="w-6 h-6 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                    <Eye className="h-3.5 w-3.5" />
+                  </div>
+                  <span>Live Leaderboard & Standings</span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -1412,13 +1379,13 @@ export default function EventDetailsPage({
                   </div>
                   <div>
                     <Label htmlFor="college">College/University</Label>
-                    <Input
+                    <CollegeAutocomplete
                       id="college"
                       value={registrationData.teamMembers[0]?.college || ''}
-                      onChange={(e) =>
-                        updateTeamMember(0, 'college', e.target.value)
+                      onChange={(val) =>
+                        updateTeamMember(0, 'college', val)
                       }
-                      placeholder="Enter your college"
+                      placeholder="Type to search your college..."
                     />
                   </div>
                   <div>
@@ -1544,16 +1511,16 @@ export default function EventDetailsPage({
                           </div>
                           <div>
                             <Label>College</Label>
-                            <Input
+                            <CollegeAutocomplete
                               value={member.college}
-                              onChange={(e) =>
+                              onChange={(val) =>
                                 updateTeamMember(
                                   index,
                                   'college',
-                                  e.target.value
+                                  val
                                 )
                               }
-                              placeholder="College/University"
+                              placeholder="Type to search college..."
                             />
                           </div>
                           <div>
@@ -1619,6 +1586,61 @@ export default function EventDetailsPage({
                       </Card>
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dynamic Custom Questions (Google Forms style) */}
+            {event?.contact_info?.custom_questions && event.contact_info.custom_questions.length > 0 && (
+              <div className="space-y-4 pt-6 border-t border-slate-200">
+                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-indigo-600 rounded-full" />
+                  Additional Information Required
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {event.contact_info.custom_questions.map((q: any) => (
+                    <div key={q.id} className="space-y-1">
+                      <Label htmlFor={`custom-${q.id}`} className="text-sm font-semibold text-slate-700">
+                        {q.label} {q.required && <span className="text-red-500">*</span>}
+                      </Label>
+                      {q.type === 'select' ? (
+                        <Select
+                          value={customAnswers[q.id] || ''}
+                          onValueChange={(val) => setCustomAnswers(prev => ({ ...prev, [q.id]: val }))}
+                        >
+                          <SelectTrigger id={`custom-${q.id}`} className="w-full border-slate-200 focus:ring-indigo-500 rounded-xl">
+                            <SelectValue placeholder="Select an option" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {q.options?.map((opt: string) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : q.type === 'checkbox' ? (
+                        <div className="flex items-center space-x-2 pt-2">
+                          <input
+                            type="checkbox"
+                            id={`custom-${q.id}`}
+                            checked={customAnswers[q.id] === 'true'}
+                            onChange={(e) => setCustomAnswers(prev => ({ ...prev, [q.id]: e.target.checked ? 'true' : 'false' }))}
+                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                          <Label htmlFor={`custom-${q.id}`} className="text-sm text-slate-600 cursor-pointer">{q.label}</Label>
+                        </div>
+                      ) : (
+                        <Input
+                          id={`custom-${q.id}`}
+                          type={q.type === 'number' ? 'number' : 'text'}
+                          value={customAnswers[q.id] || ''}
+                          onChange={(e) => setCustomAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                          placeholder={`Enter details`}
+                          required={q.required}
+                          className="border-slate-200 rounded-xl focus:ring-indigo-500"
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
