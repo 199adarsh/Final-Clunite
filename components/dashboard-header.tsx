@@ -1,12 +1,13 @@
-"use client"
+'use client';
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
-import { getUserFromDatabase } from "@/lib/sync-user"
-import { Bell, Search, Plus, LogOut } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/lib/auth-context';
+import { getUserFromDatabase } from '@/lib/sync-user';
+import { Bell, Plus, LogOut } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,44 +15,39 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Badge } from "@/components/ui/badge"
+} from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
 
 export function DashboardHeader() {
-  const { user: authUser, signOut } = useAuth()
-  const [userData, setUserData] = useState<any>(null)
+  const { user: authUser, signOut } = useAuth();
+  const [userData, setUserData] = useState<any>(null);
 
   useEffect(() => {
     async function loadUserData() {
       if (authUser) {
-        const dbUser = await getUserFromDatabase(authUser.id)
-        setUserData(dbUser)
+        const dbUser = await getUserFromDatabase(authUser.id);
+        setUserData(dbUser);
       }
     }
-    loadUserData()
-  }, [authUser])
+    loadUserData();
+  }, [authUser]);
 
-  const userName = userData?.full_name || authUser?.user_metadata?.full_name || "User"
-  const userEmail = authUser?.email || "user@example.com"
+  const userName =
+    userData?.full_name || authUser?.user_metadata?.full_name || 'User';
+  const userEmail = authUser?.email || 'user@example.com';
   const userInitials = userName
     .split(' ')
     .map((n: string) => n[0])
     .join('')
     .toUpperCase()
-    .slice(0, 2)
+    .slice(0, 2);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-      <div className="flex h-16 items-center justify-between px-6">
-        {/* Left side - Search */}
-        <div className="flex items-center space-x-4 flex-1 max-w-md">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              placeholder="Search events, clubs..."
-              className="pl-10 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
-            />
-          </div>
+      <div className="flex h-16 items-center justify-between px-4 sm:px-6">
+        {/* Left side - Sidebar Expand/Contract Trigger */}
+        <div className="flex items-center gap-2">
+          <SidebarTrigger className="h-9 w-9 text-slate-700 hover:bg-slate-100 hover:text-slate-900 border border-slate-200 rounded-md" />
         </div>
 
         {/* Right side - Actions */}
@@ -64,12 +60,13 @@ export function DashboardHeader() {
             </Button>
           </Link>
 
-
-
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
+              <Button
+                variant="ghost"
+                className="relative h-10 w-10 rounded-full p-0"
+              >
                 <div className="h-10 w-10 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
                   {userInitials}
                 </div>
@@ -79,7 +76,9 @@ export function DashboardHeader() {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{userName}</p>
-                  <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {userEmail}
+                  </p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -96,11 +95,11 @@ export function DashboardHeader() {
                 <Link href="/settings">Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={async (e) => {
-                  e.preventDefault()
-                  await signOut()
-                }} 
+                  e.preventDefault();
+                  await signOut();
+                }}
                 className="text-red-600 cursor-pointer"
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -111,5 +110,5 @@ export function DashboardHeader() {
         </div>
       </div>
     </header>
-  )
+  );
 }

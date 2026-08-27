@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { supabase } from "@/lib/supabase"
 import { 
   Users, 
   Search, 
@@ -27,7 +28,6 @@ import {
   QrCode,
   Loader2
 } from "lucide-react"
-import { useEffect } from "react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
@@ -92,13 +92,14 @@ export default function EventParticipantsPage() {
   };
 
   const checkedInCount = participants.filter(p => p.status === 'attended').length;
+  const isProcessingRef = useRef(false);
 
   useEffect(() => {
     if (!isScannerOpen) return;
 
     let html5QrcodeScanner: any = null;
     const scriptId = 'html5-qrcode-script';
-    
+
     const startScanner = () => {
       try {
         const Html5QrcodeScanner = (window as any).Html5QrcodeScanner;
@@ -115,22 +116,26 @@ export default function EventParticipantsPage() {
 
         html5QrcodeScanner.render(
           async (decodedText: string) => {
+            if (isProcessingRef.current) return;
+            isProcessingRef.current = true;
+
             const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-            const processParticipant = async (participant: any, clearScanner: () => Promise<void>) => {
-              // Duplicate scan guard
+            const processParticipant = async (participant: any) => {
               if (participant.status === 'attended') {
                 playBeep('duplicate');
-                const dupMsg = `Already checked in: ${participant.user?.full_name || 'Participant'}`;
+                const dupMsg = `${participant.user?.full_name || 'Participant'}`;
                 setScanDuplicate(dupMsg);
                 setScanResult(null);
                 setScanError(null);
                 setScanLog(prev => [{ name: participant.user?.full_name || 'Participant', time: now, type: 'duplicate' }, ...prev.slice(0, 4)]);
-                await clearScanner();
+                setTimeout(() => {
+                  setScanDuplicate(null);
+                  isProcessingRef.current = false;
+                }, 2000);
                 return;
               }
 
-              await clearScanner();
               const res = await updateParticipantStatus(participant.id, 'attended');
               if (res.success) {
                 playBeep('success');
@@ -139,46 +144,80 @@ export default function EventParticipantsPage() {
                 setScanDuplicate(null);
                 setScanError(null);
                 setScanLog(prev => [{ name: participant.user?.full_name || 'Participant', time: now, type: 'success' }, ...prev.slice(0, 4)]);
+                setTimeout(() => {
+                  setScanResult(null);
+                  isProcessingRef.current = false;
+                }, 2000);
               } else {
                 playBeep('error');
-                setScanError(`Database update failed: ${res.error || 'Unknown error'}`);
+                setScanError(`Database error: ${res.error || 'Check-in failed'}`);
                 setScanLog(prev => [{ name: 'DB Error', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+                setTimeout(() => {
+                  setScanError(null);
+                  isProcessingRef.current = false;
+                }, 2500);
               }
             };
 
-            const clearScanner = async () => {
-              if (html5QrcodeScanner) {
-                try { await html5QrcodeScanner.clear(); } catch (e) { console.log("clear error:", e); }
-              }
-            };
+            try {
+              let regId: string | null = null;
+              let userId: string | null = null;
 
-            if (decodedText.startsWith("clunite:reg:")) {
-              const regId = decodedText.replace("clunite:reg:", "").trim();
-              const participant = participants.find(p => p.id === regId);
+              if (decodedText.startsWith("clunite:reg:")) {
+                regId = decodedText.replace("clunite:reg:", "").trim();
+              } else if (decodedText.startsWith("clunite:profile:")) {
+                userId = decodedText.replace("clunite:profile:", "").trim();
+              } else if (decodedText.includes("http")) {
+                try {
+                  const url = new URL(decodedText);
+                  regId = url.searchParams.get("reg") || url.searchParams.get("id");
+                  userId = url.searchParams.get("user") || url.searchParams.get("userId");
+                } catch {
+                  regId = decodedText.trim();
+                }
+              } else {
+                regId = decodedText.trim();
+              }
+
+              let participant = participants.find(p => 
+                (regId && (p.id === regId || p.id.startsWith(`${regId}_`))) ||
+                (userId && p.user_id === userId)
+              );
+
+              // Supabase Live Fallback lookup if not preloaded in memory
+              if (!participant && (regId || userId)) {
+                let query = supabase.from("event_registrations").select("*, user:users(*)").eq("event_id", eventId);
+                if (regId) query = query.eq("id", regId);
+                else if (userId) query = query.eq("user_id", userId);
+
+                const { data: fallbackReg } = await query.maybeSingle();
+                if (fallbackReg) {
+                  participant = fallbackReg;
+                }
+              }
+
               if (participant) {
-                await processParticipant(participant, clearScanner);
+                await processParticipant(participant);
               } else {
                 playBeep('error');
-                setScanError(`Ticket valid, but not registered for this event.`);
-                setScanLog(prev => [{ name: 'Unknown ticket', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+                setScanError("QR Code not registered for this event.");
+                setScanLog(prev => [{ name: 'Unregistered QR', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+                setTimeout(() => {
+                  setScanError(null);
+                  isProcessingRef.current = false;
+                }, 2500);
               }
-            } else if (decodedText.startsWith("clunite:profile:")) {
-              const userId = decodedText.replace("clunite:profile:", "").trim();
-              const participant = participants.find(p => p.user_id === userId);
-              if (participant) {
-                await processParticipant(participant, clearScanner);
-              } else {
-                playBeep('error');
-                setScanError(`Scanned profile is not registered for this event.`);
-                setScanLog(prev => [{ name: 'Unknown profile', time: now, type: 'error' }, ...prev.slice(0, 4)]);
-              }
-            } else {
+            } catch (err: any) {
+              console.error("Scan processing error:", err);
               playBeep('error');
-              setScanError("Invalid QR Code: Not a Clunite ticket or profile.");
-              setScanLog(prev => [{ name: 'Invalid QR', time: now, type: 'error' }, ...prev.slice(0, 4)]);
+              setScanError("Failed to parse ticket data.");
+              setTimeout(() => {
+                setScanError(null);
+                isProcessingRef.current = false;
+              }, 2500);
             }
           },
-          (_errorMessage: string) => { /* suppress scan attempt logs */ }
+          (_errorMessage: string) => { /* quiet scan frames */ }
         );
         setIsScanning(true);
       } catch (err: any) {
@@ -203,8 +242,9 @@ export default function EventParticipantsPage() {
         try { html5QrcodeScanner.clear().catch((err: any) => console.log("Clean error:", err)); } catch (e) { console.log("Cleanup error:", e); }
       }
       setIsScanning(false);
+      isProcessingRef.current = false;
     };
-  }, [isScannerOpen, participants]);
+  }, [isScannerOpen, eventId, participants]);
 
   const stats = getParticipantStats()
   const isTeamEvent = eventDetails?.team_size !== 'solo'
@@ -683,6 +723,24 @@ export default function EventParticipantsPage() {
                                           </div>
                                         )}
                                       </div>
+                                      
+                                      {/* Dynamic custom questions responses */}
+                                      {participant.registration_data?.additional_info?.custom_responses && Object.keys(participant.registration_data.additional_info.custom_responses).length > 0 && (
+                                        <div className="mt-3 pt-3 border-t border-slate-100">
+                                          <span className="font-bold text-slate-700 block mb-2 text-xs">Custom Form Responses:</span>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {Object.entries(participant.registration_data.additional_info.custom_responses).map(([qId, val]: [string, any]) => {
+                                              const questionLabel = eventDetails?.contact_info?.custom_questions?.find((q: any) => q.id === qId)?.label || `Question (${qId})`;
+                                              return (
+                                                <div key={qId} className="bg-white p-2 rounded-lg border border-slate-200/60 shadow-sm">
+                                                  <span className="font-medium text-slate-400 block text-[9px] uppercase tracking-wide">{questionLabel}</span>
+                                                  <span className="text-slate-800 font-semibold text-xs">{val === 'true' ? 'Yes' : val === 'false' ? 'No' : val}</span>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -799,15 +857,47 @@ export default function EventParticipantsPage() {
                                   </div>
                                 )}
                               </div>
+                              
+                              {/* Dynamic custom questions responses */}
+                              {participant.registration_data?.additional_info?.custom_responses && Object.keys(participant.registration_data.additional_info.custom_responses).length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                  <span className="font-bold text-slate-700 block mb-2 text-xs">Custom Form Responses:</span>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {Object.entries(participant.registration_data.additional_info.custom_responses).map(([qId, val]: [string, any]) => {
+                                      const questionLabel = eventDetails?.contact_info?.custom_questions?.find((q: any) => q.id === qId)?.label || `Question (${qId})`;
+                                      return (
+                                        <div key={qId} className="bg-slate-50/50 p-2 rounded-lg border border-slate-100/50">
+                                          <span className="font-medium text-slate-400 block text-[9px] uppercase tracking-wide">{questionLabel}</span>
+                                          <span className="text-slate-800 font-semibold text-xs">{val === 'true' ? 'Yes' : val === 'false' ? 'No' : val}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 shrink-0">
+                          {participant.status !== 'attended' ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleStatusUpdate(participant.id, 'attended')}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold h-8 px-3 flex items-center gap-1 shadow-sm"
+                            >
+                              <CheckCircle className="h-3.5 w-3.5" />
+                              <span>Check-in</span>
+                            </Button>
+                          ) : (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold px-2.5 py-1 flex items-center gap-1">
+                              <CheckCircle className="h-3 w-3" /> Attended
+                            </Badge>
+                          )}
                           <Select
                             value={participant.status}
                             onValueChange={(value) => handleStatusUpdate(participant.id, value as any)}
                           >
-                            <SelectTrigger className="w-32">
+                            <SelectTrigger className="w-28 h-8 text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -819,7 +909,7 @@ export default function EventParticipantsPage() {
                           </Select>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -930,6 +1020,24 @@ export default function EventParticipantsPage() {
                               )}
                             </div>
                           </div>
+
+                          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                            {participant.status !== 'attended' ? (
+                              <Button
+                                size="sm"
+                                onClick={() => handleStatusUpdate(participant.id, 'attended')}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold h-8 flex items-center justify-center gap-1 shadow-sm"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                <span>Check-in Attendee</span>
+                              </Button>
+                            ) : (
+                              <div className="w-full bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold h-8 flex items-center justify-center gap-1">
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                <span>Attendance Verified</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -970,75 +1078,61 @@ export default function EventParticipantsPage() {
             </div>
 
             <div className="p-5 space-y-4">
-              {/* Scan Result States */}
-              {scanResult ? (
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex items-center gap-4 animate-in fade-in duration-200">
-                  <div className="h-12 w-12 shrink-0 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow">
-                    <CheckCircle className="h-7 w-7" />
+              {/* Floating Alert Notification */}
+              {scanResult && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 animate-in fade-in duration-200">
+                  <div className="h-9 w-9 shrink-0 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow">
+                    <CheckCircle className="h-5 w-5" />
                   </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-bold text-emerald-800 text-sm">✓ Checked in!</p>
-                    <p className="text-emerald-700 font-semibold">{scanResult}</p>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="font-bold text-emerald-800 text-xs">Checked In</p>
+                    <p className="text-emerald-700 font-bold text-sm truncate">{scanResult}</p>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => { setScanResult(null); setScanError(null); setScanDuplicate(null); setIsScannerOpen(false); setTimeout(() => setIsScannerOpen(true), 80); }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shrink-0"
-                  >
-                    Next
-                  </Button>
-                </div>
-              ) : scanDuplicate ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center gap-4 animate-in fade-in duration-200">
-                  <div className="h-12 w-12 shrink-0 bg-amber-400 text-white rounded-full flex items-center justify-center shadow">
-                    <UserCheck className="h-7 w-7" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-bold text-amber-800 text-sm">Already checked in</p>
-                    <p className="text-amber-700 font-semibold text-sm">{scanDuplicate}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => { setScanDuplicate(null); setScanResult(null); setScanError(null); setIsScannerOpen(false); setTimeout(() => setIsScannerOpen(true), 80); }}
-                    className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold shrink-0"
-                  >
-                    Next
-                  </Button>
-                </div>
-              ) : scanError ? (
-                <div className="bg-red-50 border border-red-100 rounded-2xl p-5 flex items-center gap-4 animate-in fade-in duration-200">
-                  <div className="h-12 w-12 shrink-0 bg-red-500 text-white rounded-full flex items-center justify-center shadow">
-                    <XCircle className="h-7 w-7" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-bold text-red-800 text-sm">Scan Failed</p>
-                    <p className="text-red-600 text-xs">{scanError}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => { setScanResult(null); setScanError(null); setScanDuplicate(null); setIsScannerOpen(false); setTimeout(() => setIsScannerOpen(true), 80); }}
-                    className="bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold shrink-0"
-                  >
-                    Retry
-                  </Button>
-                </div>
-              ) : (
-                /* Camera viewfinder */
-                <div className="space-y-3">
-                  <div className="overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 bg-slate-50 relative aspect-square max-w-[260px] mx-auto flex items-center justify-center shadow-inner">
-                    <div id="qr-reader" className="w-full h-full"></div>
-                    {!isScanning && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50">
-                        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-                        <p className="text-xs text-muted-foreground">Starting camera...</p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-center text-xs text-muted-foreground font-medium">
-                    Grant camera access if prompted · Only Clunite QR codes are accepted
-                  </p>
+                  <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    Ready for next
+                  </span>
                 </div>
               )}
+
+              {scanDuplicate && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 animate-in fade-in duration-200">
+                  <div className="h-9 w-9 shrink-0 bg-amber-400 text-white rounded-full flex items-center justify-center shadow">
+                    <UserCheck className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="font-bold text-amber-800 text-xs">Already Checked In</p>
+                    <p className="text-amber-700 font-semibold text-sm truncate">{scanDuplicate}</p>
+                  </div>
+                </div>
+              )}
+
+              {scanError && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3 animate-in fade-in duration-200">
+                  <div className="h-9 w-9 shrink-0 bg-red-500 text-white rounded-full flex items-center justify-center shadow">
+                    <XCircle className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="font-bold text-red-800 text-xs">Scan Notice</p>
+                    <p className="text-red-600 text-xs truncate">{scanError}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Continuous Camera Viewfinder */}
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 bg-slate-50 relative aspect-square max-w-[260px] mx-auto flex items-center justify-center shadow-inner">
+                  <div id="qr-reader" className="w-full h-full"></div>
+                  {!isScanning && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50">
+                      <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                      <p className="text-xs text-muted-foreground">Starting camera...</p>
+                    </div>
+                  )}
+                </div>
+                <p className="text-center text-xs text-muted-foreground font-medium">
+                  Continuous rapid mode active · Point camera at student ticket
+                </p>
+              </div>
 
               {/* Scan History Log */}
               {scanLog.length > 0 && (
