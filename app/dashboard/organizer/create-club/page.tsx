@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { CollegeAutocomplete } from "@/components/college-autocomplete"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -438,11 +439,11 @@ export default function CreateClubPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="college" className="text-sm font-semibold text-gray-700">College/University *</Label>
-                  <Input
+                  <CollegeAutocomplete
                     id="college"
-                    placeholder="e.g., MIT, Stanford"
+                    placeholder="Type to search your college..."
                     value={formData.college}
-                    onChange={(e) => setFormData({ ...formData, college: e.target.value })}
+                    onChange={(val) => setFormData({ ...formData, college: val })}
                     required
                     className="h-12 border-2 focus:border-orange-500 focus:ring-orange-500"
                   />

@@ -120,6 +120,5 @@ venv/
 .github/
 docs/
 scratch/
-scratch/*
 EMERGENCY_FIX.sql
 RUN_THESE_MIGRATIONS.sql

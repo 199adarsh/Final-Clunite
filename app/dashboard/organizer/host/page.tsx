@@ -49,6 +49,7 @@ export default function HostEventPage() {
     engagementRate: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
     // Get selected club from session
@@ -121,6 +122,18 @@ export default function HostEventPage() {
     try {
       setLoading(true);
 
+      // Check if user is owner of the selected club
+      if (authUser) {
+        const { data: membership } = await supabase
+          .from('club_memberships')
+          .select('is_owner')
+          .eq('user_id', authUser.id)
+          .eq('club_id', clubId)
+          .maybeSingle();
+        
+        setIsOwner(membership?.is_owner || false);
+      }
+
       // Fetch events for this club
       const { data: events, error: eventsError } = await supabase
         .from('events')
@@ -132,32 +145,41 @@ export default function HostEventPage() {
       const eventIds = events?.map((e: any) => e.id) || [];
 
       // Fetch registrations for these events
-      let registrations: any[] = [];
-      let attendedCount = 0;
+      let activeParticipantCount = 0;
+      let attendedParticipantCount = 0;
 
       if (eventIds.length > 0) {
         const { data: regs, error: regsError } = await supabase
           .from('event_registrations')
-          .select('id, status')
+          .select('status, registration_data')
           .in('event_id', eventIds);
 
         if (!regsError && regs) {
-          registrations = regs;
-          attendedCount = regs.filter(
-            (r: any) => r.status === 'attended'
-          ).length;
+          regs.forEach((reg: any) => {
+            if (reg.status === 'cancelled') return;
+
+            let count = 1;
+            if (reg.registration_data?.team_members && Array.isArray(reg.registration_data.team_members)) {
+              count = reg.registration_data.team_members.length;
+            }
+
+            activeParticipantCount += count;
+            if (reg.status === 'attended') {
+              attendedParticipantCount += count;
+            }
+          });
         }
       }
 
       const totalEvents = events?.length || 0;
-      const totalRegistrations = registrations.length;
+      const totalRegistrations = activeParticipantCount;
       const attendanceRate =
-        totalRegistrations > 0
-          ? Math.round((attendedCount / totalRegistrations) * 100)
+        activeParticipantCount > 0
+          ? Math.round((attendedParticipantCount / activeParticipantCount) * 100)
           : 0;
       const engagementRate =
-        totalEvents > 0 && totalRegistrations > 0
-          ? Math.round((totalRegistrations / totalEvents) * 10)
+        totalEvents > 0 && activeParticipantCount > 0
+          ? Math.round((activeParticipantCount / totalEvents) * 10)
           : 0;
 
       setStats({
@@ -174,19 +196,19 @@ export default function HostEventPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#f5f5f7] px-8 py-6 space-y-10">
+      <div className="max-w-7xl mx-auto space-y-8">
         {/* Modern Header with Club Switcher */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="h-6 w-6 text-blue-600" />
+        <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="h-5 w-5 text-indigo-600" />
               {userClubs.length > 1 ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="outline"
-                      className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      className="border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl"
                     >
                       <Building2 className="h-4 w-4 mr-2" />
                       {selectedClubName}
@@ -199,13 +221,13 @@ export default function HostEventPage() {
                         key={club.id}
                         onClick={() => switchClub(club.id, club.name)}
                         className={
-                          selectedClubId === club.id ? 'bg-blue-100' : ''
+                          selectedClubId === club.id ? 'bg-indigo-100' : ''
                         }
                       >
                         <div className="flex items-center justify-between w-full">
                           <span>{club.name}</span>
                           {selectedClubId === club.id && (
-                            <Badge className="ml-2 bg-blue-600">Current</Badge>
+                            <Badge className="ml-2 bg-indigo-600">Current</Badge>
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -213,26 +235,27 @@ export default function HostEventPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
-                  <Building2 className="h-3 w-3 mr-1" />
+                <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 font-semibold border-indigo-200">
+                  <Building2 className="h-3.5 w-3.5 mr-1" />
                   {selectedClubName}
                 </Badge>
               )}
             </div>
-            <h1 className="text-4xl font-bold text-gray-900">
+            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
               Event Management Hub
             </h1>
-            <p className="text-gray-600 mt-2">
-              Create engaging events and track your success with powerful
-              analytics
+            <p className="text-gray-600 font-medium">
+              Create engaging events and track your success with powerful analytics.
             </p>
           </div>
-          <Link href="/dashboard/organizer/manage-admins">
-            <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
-              <Users className="h-5 w-5 mr-2" />
-              Manage Admins
-            </Button>
-          </Link>
+          {isOwner && (
+            <Link href="/dashboard/organizer/manage-admins">
+              <Button size="lg" className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+                <Users className="h-5 w-5 mr-2" />
+                Manage Admins
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Colorful Stats Cards */}
@@ -268,12 +291,12 @@ export default function HostEventPage() {
               value: loading ? '...' : `${stats.engagementRate}%`,
               trend: '-2%',
               desc: 'Interaction level',
-              gradient: 'from-orange-500 to-orange-600',
+              gradient: 'from-violet-500 to-purple-600',
             },
           ].map((stat, index) => (
             <Card
               key={index}
-              className={`border-none shadow-md bg-gradient-to-br ${stat.gradient} text-white`}
+              className={`border-none shadow-sm rounded-2xl bg-gradient-to-br ${stat.gradient} text-white hover:shadow-md transition`}
             >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-3">
@@ -301,190 +324,193 @@ export default function HostEventPage() {
         </div>
 
         {/* Feature Cards - elevated, modern, with subtle animated accents */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Host New Event Card */}
-          <Card className="relative overflow-hidden bg-white/90 backdrop-blur rounded-2xl border border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 h-full group">
-            {/* decorative gradient blob */}
-            <div className="pointer-events-none absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-orange-200 to-pink-200 opacity-40 group-hover:opacity-60 blur-2xl transition-opacity" />
-            <CardHeader className="pb-6">
-              <div className="flex items-center justify-between mb-8">
-                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-md">
-                  <Plus className="h-7 w-7 text-white" />
+          <Card className="relative bg-white/95 border border-slate-200/60 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all duration-300 flex flex-col justify-between min-h-[320px] group">
+            <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-indigo-500/5 blur-xl group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
+            
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner">
+                  <Plus className="h-6 w-6" />
                 </div>
-                <Link href="/dashboard/organizer/host/create">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl shadow-sm"
-                  >
-                    Quick Start
-                  </Button>
-                </Link>
+                <Badge className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold border-indigo-200 rounded-full px-3 py-1 text-xs">
+                  Quick Start
+                </Badge>
               </div>
 
-              <div className="mb-10">
-                <div className="text-5xl mb-4 text-gray-300 font-serif">"</div>
-                <h3 className="text-3xl font-light text-gray-900 leading-tight mb-6">
+              <div className="space-y-3">
+                <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
                   Host New Event
                 </h3>
-                <p className="text-base text-gray-600 leading-relaxed min-h-[72px]">
-                  Create engaging events for your campus community. Set up
-                  workshops, competitions, seminars, and more with our
-                  comprehensive event creation tools.
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Create engaging events for your campus. Set up workshops, competitions, seminars, and more in minutes.
                 </p>
               </div>
-            </CardHeader>
+            </div>
 
-            <CardContent className="border-t border-gray-100 pt-8">
-              <div className="grid grid-cols-2 gap-x-8 mb-10">
-                <div>
-                  <div className="text-5xl font-light text-orange-500 mb-2">
-                    5 min
-                  </div>
-                  <div className="text-sm text-gray-600">Quick setup time</div>
-                </div>
-                <div>
-                  <div className="text-5xl font-light text-orange-500 mb-2">
-                    100%
-                  </div>
-                  <div className="text-sm text-gray-600">Digital workflow</div>
-                </div>
+            <div className="pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 mt-6">
+              {/* Stats Indicators */}
+              <div className="flex items-center gap-4 text-xs text-slate-500 font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                  5 min Setup
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                  100% Digital
+                </span>
               </div>
 
-              <Link
-                href="/dashboard/organizer/host/create"
-                className="inline-flex items-center text-gray-900 hover:text-orange-600 transition-colors group"
-              >
-                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all shadow-sm">
-                  <ArrowRight className="h-5 w-5" />
-                </div>
-                <span className="text-base font-normal">Create New Event</span>
+              <Link href="/dashboard/organizer/host/create" className="shrink-0">
+                <Button className="bg-slate-950 hover:bg-indigo-600 text-white font-bold px-6 py-2.5 rounded-full shadow-sm hover:shadow hover:text-white transition-all duration-200 flex items-center gap-2 group/btn">
+                  <span>Create Event</span>
+                  <ArrowRight className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                </Button>
               </Link>
-            </CardContent>
+            </div>
           </Card>
 
           {/* Organizers Panel Card */}
-          <Card className="relative overflow-hidden bg-white/90 backdrop-blur rounded-2xl border border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 h-full group">
-            <div className="pointer-events-none absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-gradient-to-br from-indigo-200 to-sky-200 opacity-40 group-hover:opacity-60 blur-2xl transition-opacity" />
-            <CardHeader className="pb-6">
-              <div className="flex items-center justify-between mb-8">
-                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-md">
-                  <BarChart3 className="h-7 w-7 text-white" />
+          <Card className="relative bg-white/95 border border-slate-200/60 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-purple-300 transition-all duration-300 flex flex-col justify-between min-h-[320px] group">
+            <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-purple-500/5 blur-xl group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
+            
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center shadow-inner">
+                  <BarChart3 className="h-6 w-6" />
                 </div>
-                <Link href="/dashboard/organizer/host/analytics">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl shadow-sm"
-                  >
-                    View Now
-                  </Button>
-                </Link>
+                <Badge className="bg-purple-50 text-purple-700 hover:bg-purple-100 font-semibold border-purple-200 rounded-full px-3 py-1 text-xs">
+                  Analytics
+                </Badge>
               </div>
 
-              <div className="mb-10">
-                <div className="text-5xl mb-4 text-gray-300 font-serif">"</div>
-                <h3 className="text-3xl font-light text-gray-900 leading-tight mb-6">
+              <div className="space-y-3">
+                <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
                   Organizers Panel
                 </h3>
-                <p className="text-base text-gray-600 leading-relaxed min-h-[72px]">
-                  Comprehensive analytics dashboard for all your events. Track
-                  performance, participant engagement, and success metrics with
-                  detailed insights.
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Comprehensive analytics dashboard for all your events. Track performance, registrations, and engagement.
                 </p>
               </div>
-            </CardHeader>
+            </div>
 
-            <CardContent className="border-t border-gray-100 pt-8">
-              <div className="grid grid-cols-2 gap-x-8 mb-10">
-                <div>
-                  <div className="text-4xl font-light text-orange-500 mb-2">
-                    Real-time
-                  </div>
-                  <div className="text-sm text-gray-600">Event analytics</div>
-                </div>
-                <div>
-                  <div className="text-5xl font-light text-orange-500 mb-2">
-                    AI
-                  </div>
-                  <div className="text-sm text-gray-600">Powered insights</div>
-                </div>
+            <div className="pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 mt-6">
+              {/* Stats Indicators */}
+              <div className="flex items-center gap-4 text-xs text-slate-500 font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  Real-time Tracking
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  AI Insights
+                </span>
               </div>
 
-              <Link
-                href="/dashboard/organizer/host/analytics"
-                className="inline-flex items-center text-gray-900 hover:text-orange-600 transition-colors group"
-              >
-                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all shadow-sm">
-                  <ArrowRight className="h-5 w-5" />
-                </div>
-                <span className="text-base font-normal">
-                  View Analytics Dashboard
-                </span>
+              <Link href="/dashboard/organizer/host/analytics" className="shrink-0">
+                <Button className="bg-slate-950 hover:bg-purple-600 text-white font-bold px-6 py-2.5 rounded-full shadow-sm hover:shadow hover:text-white transition-all duration-200 flex items-center gap-2 group/btn">
+                  <span>View Analytics</span>
+                  <ArrowRight className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                </Button>
               </Link>
-            </CardContent>
+            </div>
           </Card>
 
-          {/* Event Participants Dashboard Card - Third card aligned with first */}
-          <Card className="relative overflow-hidden bg-white/90 backdrop-blur rounded-2xl border border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 h-full group">
-            <div className="pointer-events-none absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-emerald-200 to-teal-200 opacity-40 group-hover:opacity-60 blur-2xl transition-opacity" />
-            <CardHeader className="pb-6">
-              <div className="flex items-center justify-between mb-8">
-                <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-md">
-                  <Users className="h-7 w-7 text-white" />
+          {/* Event Participants Dashboard Card */}
+          <Card className="relative bg-white/95 border border-slate-200/60 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-emerald-300 transition-all duration-300 flex flex-col justify-between min-h-[320px] group">
+            <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-emerald-500/5 blur-xl group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
+            
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-inner">
+                  <Users className="h-6 w-6" />
                 </div>
-                <Link href="/dashboard/organizer">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl shadow-sm"
-                  >
-                    View
-                  </Button>
-                </Link>
+                <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold border-emerald-200 rounded-full px-3 py-1 text-xs">
+                  Management
+                </Badge>
               </div>
 
-              <div className="mb-10">
-                <div className="text-5xl mb-4 text-gray-300 font-serif">"</div>
-                <h3 className="text-3xl font-light text-gray-900 leading-tight mb-6">
-                  Event Participants Dashboard
+              <div className="space-y-3">
+                <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
+                  Participants Hub
                 </h3>
-                <p className="text-base text-gray-600 leading-relaxed min-h-[72px]">
-                  Access your event participation details in one place. Monitor
-                  registrations, track attendance, and manage participant
-                  interactions effectively.
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Monitor registrations, track attendee presence, and manage participant logs effectively.
                 </p>
               </div>
-            </CardHeader>
+            </div>
 
-            <CardContent className="border-t border-gray-100 pt-8">
-              <div className="grid grid-cols-2 gap-x-8 mb-10">
-                <div>
-                  <div className="text-5xl font-light text-orange-500 mb-2">
-                    Track
-                  </div>
-                  <div className="text-sm text-gray-600">All registrations</div>
-                </div>
-                <div>
-                  <div className="text-5xl font-light text-orange-500 mb-2">
-                    Manage
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    Attendance records
-                  </div>
-                </div>
+            <div className="pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 mt-6">
+              {/* Stats Indicators */}
+              <div className="flex items-center gap-4 text-xs text-slate-500 font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Track Registrations
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Manage Attendance
+                </span>
               </div>
 
-              <Link
-                href="/dashboard/organizer"
-                className="inline-flex items-center text-gray-900 hover:text-orange-600 transition-colors group"
-              >
-                <div className="w-12 h-12 rounded-full border-2 border-gray-900 flex items-center justify-center mr-3 group-hover:border-orange-500 group-hover:bg-orange-50 transition-all shadow-sm">
-                  <ArrowRight className="h-5 w-5" />
-                </div>
-                <span className="text-base font-normal">View Participants</span>
+              <Link href="/dashboard/organizer" className="shrink-0">
+                <Button className="bg-slate-950 hover:bg-emerald-600 text-white font-bold px-6 py-2.5 rounded-full shadow-sm hover:shadow hover:text-white transition-all duration-200 flex items-center gap-2 group/btn">
+                  <span>Manage Participants</span>
+                  <ArrowRight className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                </Button>
               </Link>
-            </CardContent>
+            </div>
+          </Card>
+
+          {/* Bulk Certificates & Distribution Card */}
+          <Card className="relative bg-white/95 border border-slate-200/60 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-amber-300 transition-all duration-300 flex flex-col justify-between min-h-[320px] group">
+            <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-amber-500/5 blur-xl group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
+            
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shadow-inner">
+                  <Award className="h-6 w-6" />
+                </div>
+                <Badge className="bg-amber-50 text-amber-700 hover:bg-amber-100 font-semibold border-amber-200 rounded-full px-3 py-1 text-xs">
+                  Certificates
+                </Badge>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
+                  Bulk Certificates
+                </h3>
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Design, generate, and distribute verified digital certificates in bulk to attended event participants with automated delivery.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 mt-6">
+              {/* Stats Indicators */}
+              <div className="flex items-center gap-4 text-xs text-slate-500 font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Auto-Generation
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  1-Click Dispatch
+                </span>
+              </div>
+
+              <Link href="/dashboard/organizer/host/certificates" className="shrink-0">
+                <Button className="bg-slate-950 hover:bg-amber-600 text-white font-bold px-6 py-2.5 rounded-full shadow-sm hover:shadow hover:text-white transition-all duration-200 flex items-center gap-2 group/btn">
+                  <span>Issue Certificates</span>
+                  <ArrowRight className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                </Button>
+              </Link>
+            </div>
           </Card>
         </div>
       </div>

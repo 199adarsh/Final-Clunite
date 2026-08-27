@@ -354,7 +354,9 @@ export function useOrganizerEvents(userId?: string) {
           // Check if this is a team registration
           if (reg.registration_data?.team_members && Array.isArray(reg.registration_data.team_members)) {
             const teamSize = reg.registration_data.team_members.length
-            totalParticipants += teamSize
+            if (reg.status !== 'cancelled') {
+              totalParticipants += teamSize
+            }
             
             // Count by status
             if (reg.status === 'registered') registeredCount += teamSize
@@ -363,7 +365,9 @@ export function useOrganizerEvents(userId?: string) {
             else if (reg.status === 'attended') attendedCount += teamSize
           } else {
             // Solo registration or regular user registration
-            totalParticipants += 1
+            if (reg.status !== 'cancelled') {
+              totalParticipants += 1
+            }
             
             // Count by status
             if (reg.status === 'registered') registeredCount += 1

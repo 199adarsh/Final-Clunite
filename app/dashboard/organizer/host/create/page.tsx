@@ -24,6 +24,7 @@ import {
   Upload,
   ImageIcon,
   X,
+  Plus,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -40,6 +41,97 @@ export default function CreateEventPage() {
   const [uploadingBanner, setUploadingBanner] = useState(false)
   const [selectedClubId, setSelectedClubId] = useState<string | null>(null)
   const [selectedClubName, setSelectedClubName] = useState<string | null>(null)
+  
+  const [descTab, setDescTab] = useState<'write' | 'preview'>('write')
+  const [customQuestions, setCustomQuestions] = useState<any[]>([])
+
+  const insertMarkdown = (markup: string) => {
+    const textarea = document.getElementById('description') as HTMLTextAreaElement
+    if (!textarea) return
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const text = textarea.value
+    const before = text.substring(0, start)
+    const after = text.substring(end, text.length)
+    const selected = text.substring(start, end)
+    
+    let replacement = ''
+    if (markup === 'bold') replacement = `**${selected || 'bold text'}**`
+    else if (markup === 'italic') replacement = `*${selected || 'italic text'}*`
+    else if (markup === 'header') replacement = `### ${selected || 'Heading'}`
+    else if (markup === 'list') replacement = `\n- ${selected || 'List item'}`
+
+    const newValue = before + replacement + after
+    handleInputChange('description', newValue)
+    
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + replacement.length, start + replacement.length)
+    }, 50)
+  }
+
+  const renderFormattedPreview = (text: string) => {
+    if (!text) return null
+    const paragraphs = text.split('\n')
+    return paragraphs.map((p, idx) => {
+      const isListItem = p.trim().startsWith('- ') || p.trim().startsWith('* ')
+      let content = p
+      if (isListItem) {
+        content = p.trim().substring(2)
+      }
+      
+      const boldRegex = /\*\*(.*?)\*\*/g
+      const parts = []
+      let lastIndex = 0
+      let match
+      while ((match = boldRegex.exec(content)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(content.substring(lastIndex, match.index))
+        }
+        parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{match[1]}</strong>)
+        lastIndex = boldRegex.lastIndex
+      }
+      if (lastIndex < content.length) {
+        parts.push(content.substring(lastIndex))
+      }
+      
+      const renderedContent = parts.length > 0 ? parts : content
+      
+      if (isListItem) {
+        return (
+          <li key={idx} className="ml-6 list-disc text-slate-700 mb-1 text-sm">
+            {renderedContent}
+          </li>
+        )
+      }
+      return (
+        <p key={idx} className="mb-3 text-sm min-h-[1rem]">
+          {renderedContent}
+        </p>
+      )
+    })
+  }
+
+  const addCustomQuestion = () => {
+    setCustomQuestions(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        label: "",
+        type: "text",
+        required: false,
+        options: []
+      }
+    ])
+  }
+
+  const updateCustomQuestion = (id: string, key: string, val: any) => {
+    setCustomQuestions(prev => prev.map(q => q.id === id ? { ...q, [key]: val } : q))
+  }
+
+  const removeCustomQuestion = (id: string) => {
+    setCustomQuestions(prev => prev.filter(q => q.id !== id))
+  }
 
   useEffect(() => {
     // Get selected club from session
@@ -261,6 +353,7 @@ export default function CreateEventPage() {
           phone: formData.contactPhone.trim() || null,
           qr_enabled: formData.enableQR,
           certificates_enabled: formData.enableCertificates,
+          custom_questions: customQuestions
         },
         team_size: formData.teamSize as any,
         level: formData.level as any,
@@ -296,35 +389,31 @@ export default function CreateEventPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-white p-6">
+    <div className="min-h-screen bg-[#f5f5f7] px-8 py-6 space-y-8">
       <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header with Back Button */}
-        <div className="bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-500 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16 backdrop-blur-xl"></div>
-          <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-r from-blue-400 to-violet-400 opacity-20 rounded-full translate-y-20 -translate-x-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <div>
-                <Link
-                  href="/dashboard/organizer/host"
-                  className="inline-flex items-center text-blue-100 hover:text-white mb-4 transition-colors backdrop-blur-sm bg-white/10 px-4 py-2 rounded-lg"
-                >
-                  <ArrowLeft className="h-5 w-5 mr-2" />
-                  Back to Event Hub
-                </Link>
-                <div className="flex items-center mb-4">
-                  <h1 className="text-4xl font-black font-heading bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-100">Create New Event</h1>
-                  <Sparkles className="h-10 w-10 ml-4 text-indigo-200" />
-                </div>
-                <p className="text-blue-50 text-xl leading-relaxed backdrop-blur-sm">
-                  Create an engaging event for your campus community
-                </p>
+        {/* Header with Back Button matching platform visual language */}
+        <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link href="/dashboard/organizer/host">
+              <Button variant="outline" className="border-slate-200 hover:bg-slate-50 rounded-xl px-4 py-2 font-semibold text-slate-700 flex items-center gap-2">
+                <ArrowLeft className="h-4 w-4" /> Back to Event Hub
+              </Button>
+            </Link>
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Create New Event</h1>
+                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold px-2 py-0.5 rounded-full">
+                  <Sparkles className="h-3.5 w-3.5 mr-1" /> Creator
+                </Badge>
               </div>
-              <Badge className="bg-gradient-to-r from-violet-400/20 to-blue-400/20 text-white border-white/20 px-6 py-3 text-base font-semibold backdrop-blur-md shadow-lg">
-                {submitStatus === "success" ? "Published" : "Draft"}
-              </Badge>
+              <p className="text-gray-600 font-medium text-lg">
+                Create an engaging event for your campus community.
+              </p>
             </div>
           </div>
+          <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-50 px-5 py-2.5 text-sm font-semibold rounded-full shrink-0 border w-fit">
+            Status: {submitStatus === "success" ? "Published" : "Draft"}
+          </Badge>
         </div>
 
         {/* Status Messages */}
@@ -346,50 +435,54 @@ export default function CreateEventPage() {
 
         <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-8">
           {/* Basic Information */}
-          <Card className="border-0 shadow-lg bg-white">
-            <CardHeader className="pb-6">
-              <CardTitle className="flex items-center text-xl font-heading">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3">
-                  <Calendar className="h-5 w-5 text-white" />
-                </div>
-                Basic Information
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Provide the essential details about your event
-              </CardDescription>
+          <Card className="bg-white rounded-3xl p-8 border border-black/5 shadow-sm space-y-6">
+            <CardHeader className="p-0 border-b border-slate-100 pb-6 flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center text-2xl font-black text-slate-900 tracking-tight">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mr-3 shrink-0">
+                    <Calendar className="h-5 w-5" />
+                  </div>
+                  Basic Information
+                </CardTitle>
+                <CardDescription className="text-slate-500 font-medium text-sm mt-1">
+                  Provide the essential details about your event
+                </CardDescription>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <Label className="text-sm font-semibold text-foreground">Event Banner</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-indigo-400 transition-colors">
+            <CardContent className="p-0 space-y-6 pt-2">
+              <div className="space-y-3">
+                <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Event Banner</Label>
+                <div className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/30 rounded-2xl p-8 transition-all">
                   {bannerPreview ? (
-                    <div className="relative">
+                    <div className="relative rounded-2xl overflow-hidden shadow-sm">
                       <img
                         src={bannerPreview || "/placeholder.svg"}
                         alt="Banner preview"
-                        className="w-full h-48 object-cover rounded-lg"
+                        className="w-full h-56 object-cover rounded-2xl"
                       />
                       <Button
                         type="button"
                         variant="destructive"
                         size="sm"
-                        className="absolute top-2 right-2"
+                        className="absolute top-3 right-3 rounded-xl shadow-md"
                         onClick={removeBanner}
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
-                    <div className="text-center">
-                      <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-900">Upload event banner</p>
-                        <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB. Recommended: 800x400px</p>
+                    <div className="text-center py-4">
+                      <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                        <ImageIcon className="h-7 w-7" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-slate-800">Upload event banner image</p>
+                        <p className="text-xs text-slate-400">PNG, JPG, WebP up to 5MB (Recommended: 800x400px)</p>
                       </div>
                       <Button
                         type="button"
                         variant="outline"
-                        className="mt-4 bg-transparent"
+                        className="mt-4 rounded-full border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold px-6 shadow-sm"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingBanner}
                       >
@@ -410,7 +503,7 @@ export default function CreateEventPage() {
 
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="title" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="title" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Event Title *
                   </Label>
                   <Input
@@ -418,16 +511,16 @@ export default function CreateEventPage() {
                     placeholder="e.g., AI Workshop 2024"
                     value={formData.title}
                     onChange={(e) => handleInputChange("title", e.target.value)}
-                    className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                    className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-all h-11 text-slate-900"
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold text-foreground">
-                    Club/Organization
+                  <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    Club / Organization
                   </Label>
-                  <div className="flex items-center h-10 px-3 py-2 border-2 border-indigo-200 bg-indigo-50 rounded-lg">
-                    <Badge className="bg-indigo-600 text-white">
+                  <div className="flex items-center h-11 px-4 border border-indigo-100 bg-indigo-50/40 rounded-xl">
+                    <Badge className="bg-indigo-600 text-white font-semibold rounded-lg px-3 py-1">
                       {selectedClubName || 'Loading...'}
                     </Badge>
                   </div>
@@ -435,26 +528,99 @@ export default function CreateEventPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description" className="text-sm font-semibold text-foreground">
+                <Label htmlFor="description" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                   Event Description *
                 </Label>
-                <Textarea
-                  id="description"
-                  placeholder="Describe your event in detail..."
-                  value={formData.description}
-                  onChange={(e) => handleInputChange("description", e.target.value)}
-                  className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg min-h-[120px]"
-                  required
-                />
+                
+                {/* Description Formatting Toolbar */}
+                <div className="flex justify-between items-center bg-slate-50 border border-slate-200 border-b-0 rounded-t-xl px-3 py-2">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => insertMarkdown('bold')}
+                      className="h-8 w-8 p-0 font-bold hover:bg-slate-200 text-xs text-slate-700 rounded-lg"
+                      title="Bold Text"
+                    >
+                      B
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => insertMarkdown('italic')}
+                      className="h-8 w-8 p-0 italic hover:bg-slate-200 text-xs text-slate-700 font-serif rounded-lg"
+                      title="Italic Text"
+                    >
+                      I
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => insertMarkdown('header')}
+                      className="h-8 w-8 p-0 font-black hover:bg-slate-200 text-xs text-slate-700 rounded-lg"
+                      title="Heading"
+                    >
+                      H
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => insertMarkdown('list')}
+                      className="h-8 w-8 p-0 hover:bg-slate-200 text-xs text-slate-700 font-mono font-bold rounded-lg"
+                      title="Bullet List"
+                    >
+                      •-
+                    </Button>
+                  </div>
+                  <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setDescTab('write')}
+                      className={`px-3 py-1 font-semibold transition ${descTab === 'write' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Write
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDescTab('preview')}
+                      className={`px-3 py-1 font-semibold transition ${descTab === 'preview' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                </div>
+
+                {descTab === 'write' ? (
+                  <Textarea
+                    id="description"
+                    placeholder="Describe your event in detail... (Use markdown formatting buttons above)"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    className="border-slate-200 rounded-b-xl rounded-t-none focus:border-indigo-500 focus:ring-indigo-500 min-h-[140px] bg-slate-50/50 hover:bg-slate-50 focus:bg-white"
+                    required
+                  />
+                ) : (
+                  <div className="border border-slate-200 rounded-b-xl p-4 bg-slate-50/30 min-h-[140px] text-sm text-slate-800 leading-relaxed overflow-y-auto max-h-[250px]">
+                    {formData.description ? (
+                      renderFormattedPreview(formData.description)
+                    ) : (
+                      <span className="text-slate-400 italic text-xs">No description written yet</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="category" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="category" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Category *
                   </Label>
                   <Select value={formData.category} onValueChange={(value) => handleInputChange("category", value)}>
-                    <SelectTrigger className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg">
+                    <SelectTrigger className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white h-11">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -470,11 +636,11 @@ export default function CreateEventPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="type" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="type" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Event Type *
                   </Label>
                   <Select value={formData.type} onValueChange={(value) => handleInputChange("type", value)}>
-                    <SelectTrigger className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg">
+                    <SelectTrigger className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white h-11">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -489,11 +655,11 @@ export default function CreateEventPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="level" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="level" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Difficulty Level
                   </Label>
                   <Select value={formData.level} onValueChange={(value) => handleInputChange("level", value)}>
-                    <SelectTrigger className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg">
+                    <SelectTrigger className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white h-11">
                       <SelectValue placeholder="Select level" />
                     </SelectTrigger>
                     <SelectContent>
@@ -508,26 +674,28 @@ export default function CreateEventPage() {
           </Card>
 
           {/* Event Details & Logistics */}
-          <Card className="border-0 shadow-lg bg-white">
-            <CardHeader className="pb-6">
-              <CardTitle className="flex items-center text-xl font-heading">
-                <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center mr-3">
-                  <MapPin className="h-5 w-5 text-white" />
-                </div>
-                Event Details & Logistics
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Configure the timing, location, and logistics for your event
-              </CardDescription>
+          <Card className="bg-white rounded-3xl p-8 border border-black/5 shadow-sm space-y-6">
+            <CardHeader className="p-0 border-b border-slate-100 pb-6 flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center text-2xl font-black text-slate-900 tracking-tight">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mr-3 shrink-0">
+                    <MapPin className="h-5 w-5" />
+                  </div>
+                  Event Details & Logistics
+                </CardTitle>
+                <CardDescription className="text-slate-500 font-medium text-sm mt-1">
+                  Configure the timing, location, and logistics for your event
+                </CardDescription>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="p-0 space-y-6 pt-2">
               <div className="grid md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="mode" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="mode" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Event Mode *
                   </Label>
                   <Select value={formData.mode} onValueChange={(value) => handleInputChange("mode", value)}>
-                    <SelectTrigger className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg">
+                    <SelectTrigger className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white h-11">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
                     <SelectContent>
@@ -538,30 +706,30 @@ export default function CreateEventPage() {
                   </Select>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="venue" className="text-sm font-semibold text-foreground">
-                    Venue/Location {formData.mode !== "online" && "*"}
+                  <Label htmlFor="venue" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    Venue / Location {formData.mode !== "online" && "*"}
                   </Label>
                   <Input
                     id="venue"
                     placeholder={
                       formData.mode === "online"
-                        ? "Meeting link will be shared later"
-                        : "e.g., Main Auditorium, Building A"
+                        ? "Meeting link will be shared with registered students"
+                        : "e.g., Main Auditorium, Campus Hall A"
                     }
                     value={formData.venue}
                     onChange={(e) => handleInputChange("venue", e.target.value)}
-                    className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                    className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white h-11"
                     required={formData.mode !== "online"}
                   />
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-foreground">Start Date & Time *</h4>
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Start Date & Time *</h4>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="startDate" className="text-sm font-medium text-foreground">
+                    <div className="space-y-1">
+                      <Label htmlFor="startDate" className="text-[11px] font-semibold text-slate-500">
                         Date
                       </Label>
                       <Input
@@ -569,12 +737,12 @@ export default function CreateEventPage() {
                         type="date"
                         value={formData.startDate}
                         onChange={(e) => handleInputChange("startDate", e.target.value)}
-                        className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                        className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                         required
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="startTime" className="text-sm font-medium text-foreground">
+                    <div className="space-y-1">
+                      <Label htmlFor="startTime" className="text-[11px] font-semibold text-slate-500">
                         Time
                       </Label>
                       <Input
@@ -582,17 +750,17 @@ export default function CreateEventPage() {
                         type="time"
                         value={formData.startTime}
                         onChange={(e) => handleInputChange("startTime", e.target.value)}
-                        className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                        className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                         required
                       />
                     </div>
                   </div>
                 </div>
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-foreground">End Date & Time (Optional)</h4>
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">End Date & Time (Optional)</h4>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="endDate" className="text-sm font-medium text-foreground">
+                    <div className="space-y-1">
+                      <Label htmlFor="endDate" className="text-[11px] font-semibold text-slate-500">
                         Date
                       </Label>
                       <Input
@@ -600,11 +768,11 @@ export default function CreateEventPage() {
                         type="date"
                         value={formData.endDate}
                         onChange={(e) => handleInputChange("endDate", e.target.value)}
-                        className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                        className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="endTime" className="text-sm font-medium text-foreground">
+                    <div className="space-y-1">
+                      <Label htmlFor="endTime" className="text-[11px] font-semibold text-slate-500">
                         Time
                       </Label>
                       <Input
@@ -612,7 +780,7 @@ export default function CreateEventPage() {
                         type="time"
                         value={formData.endTime}
                         onChange={(e) => handleInputChange("endTime", e.target.value)}
-                        className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                        className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                       />
                     </div>
                   </div>
@@ -620,7 +788,7 @@ export default function CreateEventPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="registrationDeadline" className="text-sm font-semibold text-foreground">
+                <Label htmlFor="registrationDeadline" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                   Registration Deadline *
                 </Label>
                 <Input
@@ -628,7 +796,7 @@ export default function CreateEventPage() {
                   type="date"
                   value={formData.registrationDeadline}
                   onChange={(e) => handleInputChange("registrationDeadline", e.target.value)}
-                  className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg max-w-xs"
+                  className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11 max-w-xs"
                   required
                 />
               </div>
@@ -636,22 +804,24 @@ export default function CreateEventPage() {
           </Card>
 
           {/* Participation & Pricing */}
-          <Card className="border-0 shadow-lg bg-white">
-            <CardHeader className="pb-6">
-              <CardTitle className="flex items-center text-xl font-heading">
-                <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mr-3">
-                  <Users className="h-5 w-5 text-white" />
-                </div>
-                Participation & Pricing
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Set participation limits, team requirements, and pricing details
-              </CardDescription>
+          <Card className="bg-white rounded-3xl p-8 border border-black/5 shadow-sm space-y-6">
+            <CardHeader className="p-0 border-b border-slate-100 pb-6 flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center text-2xl font-black text-slate-900 tracking-tight">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mr-3 shrink-0">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  Participation & Pricing
+                </CardTitle>
+                <CardDescription className="text-slate-500 font-medium text-sm mt-1">
+                  Set participation limits, team requirements, and pricing details
+                </CardDescription>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="p-0 space-y-6 pt-2">
               <div className="grid md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="maxParticipants" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="maxParticipants" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Max Participants
                   </Label>
                   <Input
@@ -660,16 +830,16 @@ export default function CreateEventPage() {
                     placeholder="e.g., 100"
                     value={formData.maxParticipants}
                     onChange={(e) => handleInputChange("maxParticipants", e.target.value)}
-                    className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                    className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                     min="1"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="teamSize" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="teamSize" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Team Size
                   </Label>
                   <Select value={formData.teamSize} onValueChange={(value) => handleInputChange("teamSize", value)}>
-                    <SelectTrigger className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg">
+                    <SelectTrigger className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11">
                       <SelectValue placeholder="Select team size" />
                     </SelectTrigger>
                     <SelectContent>
@@ -680,7 +850,7 @@ export default function CreateEventPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="entryFee" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="entryFee" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Entry Fee (₹)
                   </Label>
                   <Input
@@ -689,7 +859,7 @@ export default function CreateEventPage() {
                     placeholder="0 for free"
                     value={formData.entryFee}
                     onChange={(e) => handleInputChange("entryFee", e.target.value)}
-                    className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                    className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                     min="0"
                     step="0.01"
                   />
@@ -697,7 +867,7 @@ export default function CreateEventPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="prizePool" className="text-sm font-semibold text-foreground">
+                <Label htmlFor="prizePool" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                   Prize Pool (₹) - Optional
                 </Label>
                 <Input
@@ -706,7 +876,7 @@ export default function CreateEventPage() {
                   placeholder="e.g., 10000"
                   value={formData.prizePool}
                   onChange={(e) => handleInputChange("prizePool", e.target.value)}
-                  className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg max-w-xs"
+                  className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11 max-w-xs"
                   min="0"
                   step="0.01"
                 />
@@ -715,21 +885,23 @@ export default function CreateEventPage() {
           </Card>
 
           {/* Additional Information */}
-          <Card className="border-0 shadow-lg bg-white">
-            <CardHeader className="pb-6">
-              <CardTitle className="flex items-center text-xl font-heading">
-                <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center mr-3">
-                  <Tag className="h-5 w-5 text-white" />
-                </div>
-                Additional Information
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Add tags, requirements, and other relevant details
-              </CardDescription>
+          <Card className="bg-white rounded-3xl p-8 border border-black/5 shadow-sm space-y-6">
+            <CardHeader className="p-0 border-b border-slate-100 pb-6 flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center text-2xl font-black text-slate-900 tracking-tight">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mr-3 shrink-0">
+                    <Tag className="h-5 w-5" />
+                  </div>
+                  Additional Information
+                </CardTitle>
+                <CardDescription className="text-slate-500 font-medium text-sm mt-1">
+                  Add tags, requirements, and other relevant details
+                </CardDescription>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="p-0 space-y-6 pt-2">
               <div className="space-y-2">
-                <Label htmlFor="tags" className="text-sm font-semibold text-foreground">
+                <Label htmlFor="tags" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                   Tags (comma-separated)
                 </Label>
                 <Input
@@ -737,12 +909,12 @@ export default function CreateEventPage() {
                   placeholder="e.g., AI, Machine Learning, Workshop, Beginner"
                   value={formData.tags}
                   onChange={(e) => handleInputChange("tags", e.target.value)}
-                  className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                  className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="requirements" className="text-sm font-semibold text-foreground">
+                <Label htmlFor="requirements" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                   Requirements & Prerequisites (one per line)
                 </Label>
                 <Textarea
@@ -750,29 +922,31 @@ export default function CreateEventPage() {
                   placeholder="e.g.,&#10;Basic programming knowledge&#10;Laptop with Python installed&#10;Enthusiasm to learn"
                   value={formData.requirements}
                   onChange={(e) => handleInputChange("requirements", e.target.value)}
-                  className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg min-h-[100px]"
+                  className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 min-h-[100px]"
                 />
               </div>
             </CardContent>
           </Card>
 
           {/* Contact Information & Settings */}
-          <Card className="border-0 shadow-lg bg-white">
-            <CardHeader className="pb-6">
-              <CardTitle className="flex items-center text-xl font-heading">
-                <div className="w-10 h-10 bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl flex items-center justify-center mr-3">
-                  <Settings className="h-5 w-5 text-white" />
-                </div>
-                Contact Information & Settings
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Provide contact details and configure event features
-              </CardDescription>
+          <Card className="bg-white rounded-3xl p-8 border border-black/5 shadow-sm space-y-6">
+            <CardHeader className="p-0 border-b border-slate-100 pb-6 flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center text-2xl font-black text-slate-900 tracking-tight">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mr-3 shrink-0">
+                    <Settings className="h-5 w-5" />
+                  </div>
+                  Contact Information & Settings
+                </CardTitle>
+                <CardDescription className="text-slate-500 font-medium text-sm mt-1">
+                  Provide contact details and configure event features
+                </CardDescription>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="p-0 space-y-6 pt-2">
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="contactEmail" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="contactEmail" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Contact Email
                   </Label>
                   <Input
@@ -781,11 +955,11 @@ export default function CreateEventPage() {
                     placeholder="organizer@example.com"
                     value={formData.contactEmail}
                     onChange={(e) => handleInputChange("contactEmail", e.target.value)}
-                    className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                    className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="contactPhone" className="text-sm font-semibold text-foreground">
+                  <Label htmlFor="contactPhone" className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                     Contact Phone
                   </Label>
                   <Input
@@ -794,19 +968,19 @@ export default function CreateEventPage() {
                     placeholder="+91 9876543210"
                     value={formData.contactPhone}
                     onChange={(e) => handleInputChange("contactPhone", e.target.value)}
-                    className="border-border focus:border-indigo-500 focus:ring-indigo-500 rounded-lg"
+                    className="border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-xl bg-slate-50/50 h-11"
                   />
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <h4 className="font-semibold text-foreground">Event Features</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border border-border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="font-medium text-foreground">QR Code Attendance</div>
-                      <div className="text-sm text-muted-foreground">
-                        Enable QR code scanning for attendance tracking
+              <div className="space-y-4 pt-2">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Event Features</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between p-4 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-sm text-slate-800">QR Code Attendance</div>
+                      <div className="text-xs text-slate-500">
+                        Enable QR check-in scanner for live attendance
                       </div>
                     </div>
                     <Switch
@@ -814,11 +988,11 @@ export default function CreateEventPage() {
                       onCheckedChange={(checked) => handleInputChange("enableQR", checked)}
                     />
                   </div>
-                  <div className="flex items-center justify-between p-4 border border-border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="font-medium text-foreground">Digital Certificates</div>
-                      <div className="text-sm text-muted-foreground">
-                        Automatically generate certificates for participants
+                  <div className="flex items-center justify-between p-4 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-sm text-slate-800">Digital Certificates</div>
+                      <div className="text-xs text-slate-500">
+                        Auto-issue certificates to attended participants
                       </div>
                     </div>
                     <Switch
@@ -831,12 +1005,115 @@ export default function CreateEventPage() {
             </CardContent>
           </Card>
 
+          {/* Custom Questions Section (Google Forms feature) */}
+          <Card className="bg-white rounded-3xl p-8 border border-black/5 shadow-sm space-y-6">
+            <CardHeader className="p-0 border-b border-slate-100 pb-6 flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center text-2xl font-black text-slate-900 tracking-tight">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mr-3 shrink-0">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  Custom Registration Fields
+                </CardTitle>
+                <CardDescription className="text-slate-500 font-medium text-sm mt-1">
+                  Ask custom questions (like GitHub link, T-Shirt Size, or portfolio) during student registration.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 space-y-6 pt-2">
+              {customQuestions.length === 0 ? (
+                <div className="text-center py-8 border border-dashed border-slate-200 rounded-2xl bg-slate-50/30">
+                  <Users className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No custom questions added yet</p>
+                  <p className="text-xs text-slate-400 mt-1">Students will only fill standard student profile details</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {customQuestions.map((q, idx) => (
+                    <div key={q.id} className="p-5 border border-slate-100 rounded-2xl bg-slate-50/50 flex flex-col gap-4 relative group">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeCustomQuestion(q.id)}
+                        className="absolute top-3 right-3 text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0 rounded-lg"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold text-slate-600">Question Label *</Label>
+                          <Input
+                            placeholder="e.g. GitHub Repository Link"
+                            value={q.label}
+                            onChange={(e) => updateCustomQuestion(q.id, 'label', e.target.value)}
+                            className="border-slate-200 rounded-xl h-10 bg-white"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold text-slate-600">Field Type *</Label>
+                          <Select
+                            value={q.type}
+                            onValueChange={(val) => updateCustomQuestion(q.id, 'type', val)}
+                          >
+                            <SelectTrigger className="h-10 border-slate-200 rounded-xl bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="text">Short Answer (Text)</SelectItem>
+                              <SelectItem value="number">Numeric Input</SelectItem>
+                              <SelectItem value="select">Dropdown Choice</SelectItem>
+                              <SelectItem value="checkbox">Checkbox Switch</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-center gap-6 pt-5">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id={`req-${q.id}`}
+                              checked={q.required}
+                              onCheckedChange={(val) => updateCustomQuestion(q.id, 'required', val)}
+                            />
+                            <Label htmlFor={`req-${q.id}`} className="text-xs font-bold text-slate-700 cursor-pointer">Required</Label>
+                          </div>
+                        </div>
+                      </div>
+
+                      {q.type === 'select' && (
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold text-slate-600">Options (Comma separated) *</Label>
+                          <Input
+                            placeholder="e.g. Small, Medium, Large"
+                            value={q.options ? q.options.join(', ') : ''}
+                            onChange={(e) => updateCustomQuestion(q.id, 'options', e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))}
+                            className="border-slate-200 rounded-xl h-10 bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                type="button"
+                onClick={addCustomQuestion}
+                variant="outline"
+                className="border-dashed border-indigo-300 hover:border-indigo-400 text-indigo-600 font-semibold w-full py-6 rounded-2xl hover:bg-indigo-50/50 flex items-center justify-center gap-2"
+              >
+                <Plus className="h-4 w-4" /> Add Custom Question
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Action Buttons */}
-          <div className="flex justify-end space-x-4 pt-6">
+          <div className="flex justify-end items-center space-x-4 pt-6">
             <Button
               type="button"
               variant="outline"
-              className="px-8 py-3 border-2 border-border hover:border-muted-foreground bg-transparent"
+              className="px-8 py-3.5 border border-slate-200 hover:bg-slate-100 rounded-full font-bold text-slate-700 bg-white shadow-sm transition-all"
               onClick={(e) => handleSubmit(e, true)}
               disabled={isSubmitting}
             >
@@ -844,10 +1121,10 @@ export default function CreateEventPage() {
             </Button>
             <Button
               type="submit"
-              className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
+              className="px-10 py-3.5 bg-slate-950 hover:bg-slate-800 text-white font-bold rounded-full shadow-md hover:shadow-lg transition-all duration-300 flex items-center gap-2"
               disabled={isSubmitting}
             >
-              <Save className="h-5 w-5 mr-2" />
+              <Save className="h-4 w-4" />
               {isSubmitting ? "Publishing..." : "Publish Event"}
             </Button>
           </div>

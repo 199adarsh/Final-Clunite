@@ -94,10 +94,10 @@ export default function OrganizerDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FBF7F4] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-orange-500 mx-auto" />
-          <p className="mt-4 text-gray-600">Loading events...</p>
+          <Loader2 className="h-12 w-12 animate-spin text-indigo-600 mx-auto" />
+          <p className="mt-4 text-slate-600 font-semibold">Loading events...</p>
         </div>
       </div>
     )
@@ -105,48 +105,40 @@ export default function OrganizerDashboardPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#FBF7F4] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">Error loading events: {error}</p>
-          <Button className="bg-orange-500 hover:bg-orange-600" onClick={() => window.location.reload()}>Retry</Button>
+          <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => window.location.reload()}>Retry</Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#FBF7F4]">
-      <div className="max-w-7xl mx-auto p-6 space-y-8">
+    <div className="min-h-screen bg-[#f5f5f7] px-8 py-6 space-y-8">
+      <div className="max-w-7xl mx-auto space-y-8">
         {/* Enhanced Header */}
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-8 text-white relative overflow-hidden shadow-lg">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16"></div>
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-12 -translate-x-12"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold mb-2">Event Participants Dashboard</h1>
-                <p className="text-white/90 text-lg">View and manage participants for all events</p>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Link href="/dashboard/organizer/host">
-                  <Button className="bg-white/20 hover:bg-white/30 text-white border border-white/30 font-semibold px-6 py-3 rounded-lg hover:scale-105 transition-all duration-300">
-                    <Plus className="h-5 w-5 mr-2" />
-                    Event Management Hub
-                  </Button>
-                </Link>
-              </div>
-            </div>
+        <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Event Participants Dashboard</h1>
+            <p className="text-gray-600 font-medium">View and manage participants for all events</p>
           </div>
+          <Link href="/dashboard/organizer/host">
+            <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+              <Plus className="h-5 w-5 mr-2" />
+              Event Management Hub
+            </Button>
+          </Link>
         </div>
 
         {/* No Clubs Message */}
         {userClubs && userClubs.length === 0 && (
-          <Card className="border-2 border-orange-200 bg-orange-50">
-            <CardContent className="p-6 text-center">
-              <p className="text-orange-900 font-medium mb-2">You are not an admin of any clubs yet</p>
-              <p className="text-orange-700 text-sm mb-4">Create a club or verify with a PIN to get started</p>
+          <Card className="border border-indigo-100 bg-indigo-50/50 rounded-2xl">
+            <CardContent className="p-8 text-center space-y-4">
+              <p className="text-indigo-900 font-bold text-lg">You are not an admin of any clubs yet</p>
+              <p className="text-indigo-700 text-sm">Create a club or verify with a PIN to get started</p>
               <Link href="/dashboard/organizer/create-club">
-                <Button className="bg-orange-500 hover:bg-orange-600">
+                <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Your First Club
                 </Button>
@@ -155,15 +147,14 @@ export default function OrganizerDashboardPage() {
           </Card>
         )}
 
-        {/* Enhanced Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-500 transition-all duration-300 bg-white">
+          <Card className="border border-black/5 shadow-sm hover:shadow-md hover:border-indigo-500 transition-all duration-300 bg-white rounded-2xl overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
                   <Calendar className="h-6 w-6" />
                 </div>
-                <Badge className="bg-orange-50 text-orange-700 border-orange-200">Total</Badge>
+                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200">Total</Badge>
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Events</p>
@@ -173,13 +164,13 @@ export default function OrganizerDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-500 transition-all duration-300 bg-white">
+          <Card className="border border-black/5 shadow-sm hover:shadow-md hover:border-indigo-500 transition-all duration-300 bg-white rounded-2xl overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 text-white">
                   <Users className="h-6 w-6" />
                 </div>
-                <Badge className="bg-blue-50 text-blue-700 border-blue-200">Club Stats</Badge>
+                <Badge className="bg-purple-50 text-purple-700 border-purple-200">Club Stats</Badge>
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Participants</p>
@@ -189,13 +180,13 @@ export default function OrganizerDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-500 transition-all duration-300 bg-white">
+          <Card className="border border-black/5 shadow-sm hover:shadow-md hover:border-indigo-500 transition-all duration-300 bg-white rounded-2xl overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-white">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
                   <UserCheck className="h-6 w-6" />
                 </div>
-                <Badge className="bg-green-50 text-green-700 border-green-200">Active</Badge>
+                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Registered</p>
@@ -207,12 +198,12 @@ export default function OrganizerDashboardPage() {
         </div>
 
         {/* Search and Events List */}
-        <Card className="border border-gray-200 shadow-sm bg-white">
-          <CardHeader>
+        <Card className="border border-black/5 shadow-sm bg-white rounded-2xl overflow-hidden">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <CardTitle className="text-xl font-bold text-gray-900">All Events</CardTitle>
-                <CardDescription className="text-gray-600">View participants for each event</CardDescription>
+                <CardTitle className="text-xl font-bold text-slate-800">All Events</CardTitle>
+                <CardDescription className="text-xs">View participants for each event</CardDescription>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -237,14 +228,14 @@ export default function OrganizerDashboardPage() {
                 {filteredEvents.map((event) => (
                   <div
                     key={event.id}
-                    className="flex items-center justify-between p-6 border border-gray-200 rounded-xl hover:shadow-md hover:border-orange-500 transition-all duration-300"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border border-slate-100 rounded-xl hover:shadow-md hover:border-indigo-500 transition-all duration-300 gap-4"
                   >
                     <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg flex items-center justify-center text-white font-bold">
+                      <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">
                         {event.title.charAt(0)}
                       </div>
                       <div>
-                        <div className="font-bold text-gray-900 text-lg">{event.title}</div>
+                        <div className="font-bold text-slate-800 text-lg">{event.title}</div>
                         <div className="flex items-center space-x-3 text-sm text-gray-600">
                           <div className="flex items-center">
                             <MapPin className="h-4 w-4 mr-1" />
