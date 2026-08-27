@@ -62,7 +62,7 @@ export async function fetchClubAnalytics(
     // Fetch all events for the club
     const { data: events, error: eventsError } = await supabase
       .from('events')
-      .select('id, entry_fee, current_participants, created_at, status')
+      .select('id, entry_fee, created_at, status')
       .eq('club_id', clubId);
 
     if (eventsError) throw eventsError;
@@ -70,32 +70,53 @@ export async function fetchClubAnalytics(
     const eventIds = events?.map((e: any) => e.id) || [];
 
     // Fetch all registrations for these events
-    let totalRegistrations = 0;
+    let totalParticipants = 0;
     let totalAttendance = 0;
+    let totalRevenue = 0;
 
     if (eventIds.length > 0) {
       const { data: registrations, error: regsError } = await supabase
         .from('event_registrations')
-        .select('id, status')
+        .select('event_id, status, registration_data')
         .in('event_id', eventIds);
 
       if (!regsError && registrations) {
-        totalRegistrations = registrations.length;
-        totalAttendance = registrations.filter(
-          (r: any) => r.status === 'attended'
-        ).length;
+        const regsMap = (registrations as any[]).reduce<Record<string, any[]>>((acc, reg) => {
+          if (!acc[reg.event_id]) acc[reg.event_id] = [];
+          acc[reg.event_id].push(reg);
+          return acc;
+        }, {});
+
+        events?.forEach((event: any) => {
+          const eventRegs = regsMap[event.id] || [];
+          let eventParticipants = 0;
+          let eventAttendance = 0;
+
+          eventRegs.forEach((reg: any) => {
+            if (reg.status === 'cancelled') return;
+
+            let count = 1;
+            if (reg.registration_data?.team_members && Array.isArray(reg.registration_data.team_members)) {
+              count = reg.registration_data.team_members.length;
+            }
+
+            eventParticipants += count;
+            if (reg.status === 'attended') {
+              eventAttendance += count;
+            }
+          });
+
+          totalParticipants += eventParticipants;
+          totalAttendance += eventAttendance;
+          totalRevenue += eventParticipants * (Number(event.entry_fee) || 0);
+        });
       }
     }
 
     // Calculate metrics
     const totalEvents = events?.length || 0;
-    const totalRevenue =
-      events?.reduce(
-        (sum: number, e: any) => sum + e.entry_fee * e.current_participants,
-        0
-      ) || 0;
     const attendanceRate =
-      totalRegistrations > 0 ? (totalAttendance / totalRegistrations) * 100 : 0;
+      totalParticipants > 0 ? (totalAttendance / totalParticipants) * 100 : 0;
 
     // Calculate growth rate (compare last 30 days vs previous 30 days)
     const thirtyDaysAgo = new Date();
@@ -120,7 +141,7 @@ export async function fetchClubAnalytics(
 
     return {
       totalEvents,
-      totalParticipants: totalRegistrations,
+      totalParticipants,
       totalRevenue,
       avgSatisfaction: 4.6, // Placeholder - would need feedback table
       growthRate: Math.round(growthRate * 10) / 10,
@@ -151,7 +172,7 @@ export async function fetchEventComparison(
     const { data: events, error: eventsError } = await supabase
       .from('events')
       .select(
-        'id, title, entry_fee, current_participants, category, type, start_date'
+        'id, title, entry_fee, category, type, start_date'
       )
       .eq('club_id', clubId)
       .order('start_date', { ascending: false })
@@ -165,7 +186,7 @@ export async function fetchEventComparison(
     // Fetch all registrations in a single query to avoid N+1 queries
     const { data: registrations, error: regsError } = await supabase
       .from('event_registrations')
-      .select('event_id, status')
+      .select('event_id, status, registration_data')
       .in('event_id', eventIds);
 
     if (regsError) throw regsError;
@@ -179,15 +200,30 @@ export async function fetchEventComparison(
 
     return events.map((event: any) => {
       const eventRegs = regsMap[event.id] || [];
-      const totalRegs = eventRegs.length;
-      const attended = eventRegs.filter((r: any) => r.status === 'attended').length;
+      
+      let totalParticipants = 0;
+      let attended = 0;
+
+      eventRegs.forEach((reg: any) => {
+        if (reg.status === 'cancelled') return;
+
+        let count = 1;
+        if (reg.registration_data?.team_members && Array.isArray(reg.registration_data.team_members)) {
+          count = reg.registration_data.team_members.length;
+        }
+
+        totalParticipants += count;
+        if (reg.status === 'attended') {
+          attended += count;
+        }
+      });
 
       return {
         eventId: event.id,
         title: event.title,
-        registrations: totalRegs,
+        registrations: totalParticipants,
         attendance: attended,
-        revenue: event.entry_fee * event.current_participants,
+        revenue: (Number(event.entry_fee) || 0) * totalParticipants,
         category: event.category,
         type: event.type,
         startDate: event.start_date,
@@ -223,10 +259,10 @@ export async function fetchParticipantDemographics(
       };
     }
 
-    // Fetch user IDs and registration data in a single call to avoid consecutive queries
+    // Fetch user IDs, registration data and status in a single call
     const { data: registrations, error: regsError } = await supabase
       .from('event_registrations')
-      .select('user_id, registration_data')
+      .select('user_id, registration_data, status')
       .in('event_id', eventIds);
 
     if (regsError || !registrations || registrations.length === 0) {
@@ -238,8 +274,7 @@ export async function fetchParticipantDemographics(
       };
     }
 
-    const userIds = [...new Set(registrations.map((r: any) => r.user_id))];
-    const allRegistrations = registrations;
+    const allRegistrations = registrations.filter((r: any) => r.status !== 'cancelled');
 
     // Extract department (branch) from registrations
     const deptCounts: Record<string, number> = {};
@@ -447,7 +482,7 @@ export async function fetchFinancialMetrics(
   try {
     const { data: events } = await supabase
       .from('events')
-      .select('id, title, entry_fee, current_participants, prize_pool')
+      .select('id, title, entry_fee, prize_pool')
       .eq('club_id', clubId);
 
     if (!events) {
@@ -460,14 +495,43 @@ export async function fetchFinancialMetrics(
       };
     }
 
+    const eventIds = events.map((e: any) => e.id);
+
+    // Fetch registrations to compute accurate income
+    let registrations: any[] = [];
+    if (eventIds.length > 0) {
+      const { data: regs } = await supabase
+        .from('event_registrations')
+        .select('event_id, status, registration_data')
+        .in('event_id', eventIds);
+      registrations = regs || [];
+    }
+
+    const regsMap = registrations.reduce<Record<string, any[]>>((acc, reg) => {
+      if (!acc[reg.event_id]) acc[reg.event_id] = [];
+      acc[reg.event_id].push(reg);
+      return acc;
+    }, {});
+
     // Calculate income from entry fees
-    const incomeByEvent = events.map((event: any) => ({
-      eventName: event.title,
-      income: event.entry_fee * event.current_participants,
-    }));
+    const incomeByEvent = events.map((event: any) => {
+      const eventRegs = regsMap[event.id] || [];
+      let activeParticipants = 0;
+      eventRegs.forEach((reg: any) => {
+        if (reg.status === 'cancelled') return;
+        let count = 1;
+        if (reg.registration_data?.team_members && Array.isArray(reg.registration_data.team_members)) {
+          count = reg.registration_data.team_members.length;
+        }
+        activeParticipants += count;
+      });
+      return {
+        eventName: event.title,
+        income: (Number(event.entry_fee) || 0) * activeParticipants,
+      };
+    });
 
     // Separate income and expenses from event_expenses based on type field
-    const eventIds = events.map((e: any) => e.id);
     let totalExpenses = 0;
     let totalIncomeFromEntries = 0;
     let expenseBreakdown: Array<{
@@ -579,7 +643,7 @@ export async function fetchTimeSeriesData(
 
     const { data: events, error: eventsError } = await supabase
       .from('events')
-      .select('id, entry_fee, current_participants, start_date')
+      .select('id, entry_fee, start_date')
       .eq('club_id', clubId)
       .gte('start_date', startDate.toISOString())
       .order('start_date', { ascending: true });
@@ -592,7 +656,7 @@ export async function fetchTimeSeriesData(
     // Fetch all registrations in one query to avoid N+1 loop queries
     const { data: registrations, error: regsError } = await supabase
       .from('event_registrations')
-      .select('event_id, status')
+      .select('event_id, status, registration_data')
       .in('event_id', eventIds);
 
     if (regsError) throw regsError;
@@ -617,16 +681,32 @@ export async function fetchTimeSeriesData(
       const weekKey = weekStart.toISOString().split('T')[0];
 
       const eventRegs = regsMap[event.id] || [];
-      const totalRegs = eventRegs.length;
-      const attended = eventRegs.filter((r: any) => r.status === 'attended').length;
-      const revenue = event.entry_fee * event.current_participants;
+      
+      let eventParticipants = 0;
+      let eventAttended = 0;
+
+      eventRegs.forEach((reg: any) => {
+        if (reg.status === 'cancelled') return;
+
+        let count = 1;
+        if (reg.registration_data?.team_members && Array.isArray(reg.registration_data.team_members)) {
+          count = reg.registration_data.team_members.length;
+        }
+
+        eventParticipants += count;
+        if (reg.status === 'attended') {
+          eventAttended += count;
+        }
+      });
+
+      const revenue = (Number(event.entry_fee) || 0) * eventParticipants;
 
       if (!weeklyData[weekKey]) {
         weeklyData[weekKey] = { registrations: 0, attendance: 0, revenue: 0 };
       }
 
-      weeklyData[weekKey].registrations += totalRegs;
-      weeklyData[weekKey].attendance += attended;
+      weeklyData[weekKey].registrations += eventParticipants;
+      weeklyData[weekKey].attendance += eventAttended;
       weeklyData[weekKey].revenue += revenue;
     }
 

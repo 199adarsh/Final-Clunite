@@ -10,6 +10,8 @@ import {
   LogOut,
   Building2,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -27,6 +29,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/lib/auth-context';
 import { getUserFromDatabase } from '@/lib/sync-user';
@@ -47,7 +50,7 @@ const menuItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { state } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === 'collapsed';
 
   const { user: authUser, signOut } = useAuth();
@@ -69,26 +72,44 @@ export function AppSidebar() {
     .toUpperCase();
 
   return (
-    <Sidebar className="border-r bg-background">
-      {/* HEADER — identical to shadcn docs */}
+    <Sidebar collapsible="icon" className="border-r bg-background">
+      {/* HEADER — with expand/collapse control */}
       <SidebarHeader className="h-16 px-4 border-b">
-        <div className="flex w-full items-center justify-start gap-3">
-          {/* Logo mark */}
-          <div
-            className={cn(
-              'flex h-9 w-9 items-center justify-center rounded-md border',
-              'text-sm font-semibold tracking-tight'
+        <div className="flex w-full items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Logo mark */}
+            <div
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-md border',
+                'text-sm font-semibold tracking-tight shrink-0'
+              )}
+            >
+              CL
+            </div>
+
+            {/* Wordmark */}
+            {!isCollapsed && (
+              <span className="text-base font-semibold tracking-tight">
+                Clunite
+              </span>
             )}
-          >
-            CL
           </div>
 
-          {/* Wordmark */}
-          {!isCollapsed && (
-            <span className="text-base font-semibold tracking-tight">
-              Clunite
-            </span>
-          )}
+          {/* Expand / Contract (Collapse) Toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+            <span className="sr-only">Toggle Sidebar</span>
+          </Button>
         </div>
       </SidebarHeader>
 

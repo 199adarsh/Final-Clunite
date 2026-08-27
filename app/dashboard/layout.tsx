@@ -1,29 +1,31 @@
-"use client"
+'use client';
 
-import type React from "react"
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-import { DashboardHeader } from "@/components/dashboard-header"
-import { Loader2 } from "lucide-react"
+import type React from 'react';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/app-sidebar';
+import { DashboardHeader } from '@/components/dashboard-header';
+import { Loader2 } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const router = useRouter()
-  const { user, loading } = useAuth()
+  const router = useRouter();
+  const { user, loading } = useAuth();
 
   useEffect(() => {
     // If not loading and no user, redirect to login
     if (!loading && !user) {
-      console.log('🔒 Dashboard layout: No authenticated user, redirecting to login')
-      router.push('/login')
+      console.log(
+        '🔒 Dashboard layout: No authenticated user, redirecting to login'
+      );
+      router.push('/login');
     }
-  }, [user, loading, router])
+  }, [user, loading, router]);
 
   // Show loading while checking auth
   if (loading) {
@@ -34,7 +36,7 @@ export default function DashboardLayout({
           <p className="text-slate-600">Loading...</p>
         </div>
       </div>
-    )
+    );
   }
 
   // If no user after loading, show loading while redirecting
@@ -46,7 +48,7 @@ export default function DashboardLayout({
           <p className="text-slate-600">Redirecting to login...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -59,5 +61,5 @@ export default function DashboardLayout({
         </div>
       </div>
     </SidebarProvider>
-  )
+  );
 }

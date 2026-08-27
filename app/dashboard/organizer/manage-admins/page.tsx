@@ -8,27 +8,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Users, Crown, UserPlus, Trash2, Mail, AlertCircle, Loader2, Shield } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Users, Crown, UserPlus, Trash2, Mail, AlertCircle, Loader2, Shield, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export default function ManageAdminsPage() {
+  const router = useRouter()
   const { user: authUser } = useAuth()
   const [loading, setLoading] = useState(true)
   const [currentClub, setCurrentClub] = useState<any>(null)
@@ -47,16 +34,14 @@ export default function ManageAdminsPage() {
     try {
       setLoading(true)
       
-      // Get the club ID from sessionStorage (set when creating/selecting a club)
       const storedClubId = sessionStorage.getItem('selectedClubId')
-      
       if (!storedClubId) {
-        toast.error('No club selected. Please create or select a club first.')
-        setLoading(false)
+        toast.error('No club selected. Please select a club first.')
+        router.push('/dashboard/organizer/host')
         return
       }
 
-      // Verify user is an admin of this club
+      // Load membership of current user
       const { data: membership, error: membershipError } = await supabase
         .from('club_memberships')
         .select(`
@@ -70,15 +55,15 @@ export default function ManageAdminsPage() {
 
       if (membershipError || !membership) {
         toast.error('You are not an admin of this club')
-        setLoading(false)
+        router.push('/dashboard/organizer/host')
         return
       }
 
       setCurrentClub(membership.club)
       setIsOwner(membership.is_owner || false)
       
-      // Load admins for this club
-      loadClubAdmins(storedClubId)
+      // Load all admins for this club
+      await loadClubAdmins(storedClubId)
     } catch (err: any) {
       console.error('Error loading club:', err)
       toast.error('Failed to load club data')
@@ -88,9 +73,6 @@ export default function ManageAdminsPage() {
 
   const loadClubAdmins = async (clubId: string) => {
     try {
-      setLoading(true)
-
-      // Load all admins
       const { data, error } = await supabase
         .from('club_memberships')
         .select(`
@@ -102,16 +84,11 @@ export default function ManageAdminsPage() {
         .order('is_owner', { ascending: false })
         .order('joined_at', { ascending: true })
 
-      if (error) {
-        console.error('Error loading admins:', error)
-        throw error
-      }
-
-      console.log('Loaded admins:', data)
+      if (error) throw error
       setAdmins(data || [])
     } catch (err: any) {
       console.error('Error loading admins:', err)
-      toast.error('Failed to load admins')
+      toast.error('Failed to load admins list')
     } finally {
       setLoading(false)
     }
@@ -128,7 +105,6 @@ export default function ManageAdminsPage() {
       return
     }
 
-    // Check if already at max (5 admins)
     if (admins.length >= 5) {
       toast.error('Maximum 5 admins allowed per club')
       return
@@ -151,13 +127,9 @@ export default function ManageAdminsPage() {
       }
 
       const clubId = sessionStorage.getItem('selectedClubId')
-      if (!clubId) {
-        toast.error('No club selected')
-        setAdding(false)
-        return
-      }
+      if (!clubId) return
 
-      // Check if already has any membership in this club
+      // Check if already has any membership
       const { data: existingMembership, error: fetchErr } = await supabase
         .from('club_memberships')
         .select('*')
@@ -169,12 +141,12 @@ export default function ManageAdminsPage() {
 
       if (existingMembership) {
         if (existingMembership.role === 'admin') {
-          toast.error('User is already an admin of this club')
+          toast.error('User is already an admin')
           setAdding(false)
           return
         }
 
-        // Upgrade membership to admin role
+        // Upgrade membership to admin
         const { error: updateError } = await supabase
           .from('club_memberships')
           .update({
@@ -187,7 +159,7 @@ export default function ManageAdminsPage() {
 
         if (updateError) throw updateError
       } else {
-        // Add as admin
+        // Insert new membership
         const { error: addError } = await supabase
           .from('club_memberships')
           .insert({
@@ -203,7 +175,7 @@ export default function ManageAdminsPage() {
         if (addError) throw addError
       }
 
-      // Update user role to organizer
+      // Upgrade user role to organizer if they were a student
       await supabase
         .from('users')
         .update({ role: 'organizer' })
@@ -226,7 +198,7 @@ export default function ManageAdminsPage() {
       return
     }
 
-    if (!confirm(`Remove ${adminName} as admin?`)) {
+    if (!confirm(`Are you sure you want to remove ${adminName} as admin?`)) {
       return
     }
 
@@ -250,245 +222,284 @@ export default function ManageAdminsPage() {
     }
   }
 
+  const handleTransferOwnership = async (targetUserId: string, targetUserName: string) => {
+    if (!isOwner) {
+      toast.error('Only the club owner can transfer ownership')
+      return
+    }
+
+    if (!confirm(`Are you sure you want to transfer club ownership to ${targetUserName}? You will become a regular admin and lose owner privileges.`)) {
+      return
+    }
+
+    const clubId = sessionStorage.getItem('selectedClubId')
+    if (!clubId) return
+
+    try {
+      setLoading(true)
+
+      // Step 1: Remove owner status from current user
+      const { error: err1 } = await supabase
+        .from('club_memberships')
+        .update({ is_owner: false })
+        .eq('user_id', authUser!.id)
+        .eq('club_id', clubId)
+
+      if (err1) throw err1
+
+      // Step 2: Grant owner status to target user
+      const { error: err2 } = await supabase
+        .from('club_memberships')
+        .update({ is_owner: true })
+        .eq('user_id', targetUserId)
+        .eq('club_id', clubId)
+
+      if (err2) throw err2
+
+      // Step 3: Update club's created_by to target user
+      const { error: err3 } = await supabase
+        .from('clubs')
+        .update({ created_by: targetUserId })
+        .eq('id', clubId)
+
+      if (err3) throw err3
+
+      toast.success(`Ownership has been successfully transferred to ${targetUserName}`)
+      
+      // Update local states
+      setIsOwner(false)
+      loadCurrentClub()
+    } catch (err: any) {
+      console.error('Error transferring ownership:', err)
+      toast.error('Failed to transfer ownership')
+      setLoading(false)
+    }
+  }
+
+  // Loading Screen
   if (loading && !currentClub) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+          <p className="text-sm font-semibold text-slate-500">Loading administrator details...</p>
+        </div>
       </div>
     )
   }
 
-  if (!currentClub && !loading) {
+  // Owner Access Enforcement Screen
+  if (!loading && !isOwner) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-2xl mx-auto">
-          <Card className="border-2 border-yellow-200 bg-yellow-50">
-            <CardContent className="p-6 text-center">
-              <p className="text-yellow-900 font-medium mb-2">No club selected</p>
-              <p className="text-yellow-700 text-sm mb-4">Please create a club or select one from the event management hub</p>
-              <Link href="/dashboard/organizer/create-club">
-                <Button className="bg-yellow-600 hover:bg-yellow-700">
-                  Create Your First Club
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6">
+        <Card className="max-w-md w-full border border-slate-100 shadow-xl bg-white rounded-2xl text-center overflow-hidden">
+          <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+          <CardContent className="p-8 space-y-6">
+            <div className="h-16 w-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+              <Shield className="h-8 w-8" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-black text-slate-800">Owner Access Required</h2>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Only the club owner has permission to manage administrators and transfer ownership for this club.
+              </p>
+            </div>
+            <Link href="/dashboard/organizer/host" className="block">
+              <Button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3.5 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl">
+                Back to Hub
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/20 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16 backdrop-blur-xl"></div>
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-12 -translate-x-12 backdrop-blur-xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
-                    <Users className="h-7 w-7 text-white" />
-                  </div>
-                  <h1 className="text-4xl font-black">Manage Admins</h1>
-                </div>
-                <p className="text-emerald-50 text-lg">Add or remove club administrators for {currentClub?.name}</p>
-              </div>
-              <Link href="/dashboard/organizer/host">
-                <Button className="bg-white/20 hover:bg-white/30 text-white border border-white/30 font-semibold px-6 py-3 rounded-xl backdrop-blur-sm hover:scale-105 transition-all duration-300">
-                  Back to Hub
-                </Button>
-              </Link>
-            </div>
+    <div className="min-h-screen bg-[#f5f5f7] px-8 py-6 space-y-8">
+      {/* Header card with glassmorphism header & colorful gradients */}
+      <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Manage Admins</h1>
+            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 font-semibold border-amber-200 capitalize">
+              <Crown className="h-3.5 w-3.5 mr-1" /> Owner View
+            </Badge>
           </div>
+          <p className="text-gray-600 font-medium">
+            Add, remove, or transfer club ownership for <span className="text-indigo-600 font-bold">{currentClub?.name}</span>.
+          </p>
         </div>
+        <Link href="/dashboard/organizer/host">
+          <Button variant="outline" className="border-slate-200 hover:bg-slate-50 rounded-xl px-5 py-2.5 font-semibold text-slate-700 flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" /> Back to Hub
+          </Button>
+        </Link>
+      </div>
 
-        {/* Current Club Info */}
-        <Card className="border-0 shadow-xl bg-white">
-          <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b">
-            <CardTitle className="flex items-center gap-2 text-emerald-900">
-              <Shield className="h-5 w-5" />
-              Managing Club
-            </CardTitle>
-            <CardDescription>You are managing administrators for this club</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border-2 border-emerald-200">
-              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                <Users className="h-6 w-6 text-white" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-gray-900">{currentClub?.name}</h3>
-                <p className="text-sm text-gray-600">{currentClub?.category} • {currentClub?.college}</p>
-              </div>
-              {isOwner && (
-                <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500">
-                  <Crown className="h-3 w-3 mr-1" />
-                  Owner
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Owner Status */}
-        {!isOwner && (
-          <Alert className="border-2 border-amber-200 bg-amber-50">
-            <AlertCircle className="h-5 w-5 text-amber-600" />
-            <AlertDescription className="text-amber-900 font-medium">
-              You are an admin but not the owner. Only the owner can add/remove admins.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Add Admin (Owner Only) */}
-        {isOwner && admins.length < 5 && (
-          <Card className="border-0 shadow-xl bg-gradient-to-br from-white to-emerald-50/30">
-            <CardHeader className="border-b bg-gradient-to-r from-emerald-50 to-teal-50">
-              <CardTitle className="flex items-center gap-2 text-emerald-900">
-                <UserPlus className="h-5 w-5" />
-                Add New Admin
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* Left Column - Add Admin Form */}
+        <div className="md:col-span-1 space-y-6">
+          <Card className="rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-indigo-500" />
+                Add Administrator
               </CardTitle>
-              <CardDescription>
-                Invite someone to be an admin ({admins.length}/5 slots used)
+              <CardDescription className="text-xs">
+                Slots used: <span className="font-bold text-slate-800">{admins.length}/5</span>
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <Label htmlFor="newAdminEmail" className="sr-only">Email</Label>
+            <CardContent className="p-6 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newAdminEmail" className="text-xs font-bold text-slate-700">User Email Address</Label>
+                <div className="relative">
                   <Input
                     id="newAdminEmail"
                     type="email"
-                    placeholder="admin@example.com"
+                    placeholder="e.g. user@college.edu"
                     value={newAdminEmail}
                     onChange={(e) => setNewAdminEmail(e.target.value)}
-                    className="h-12"
+                    className="pl-9 h-11 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-indigo-500"
                   />
+                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 </div>
-                <Button
-                  onClick={handleAddAdmin}
-                  disabled={adding || !newAdminEmail}
-                  className="h-12 px-6"
-                >
-                  {adding ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add Admin
-                    </>
-                  )}
-                </Button>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Note: The user must already have registered an account on Clunite.
+                </p>
               </div>
-              <p className="text-sm text-gray-600 mt-2">
-                User must have an account on Clunite first
-              </p>
+
+              <Button
+                onClick={handleAddAdmin}
+                disabled={adding || !newAdminEmail || admins.length >= 5}
+                className="w-full h-11 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition"
+              >
+                {adding ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding Admin...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add Admin
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
-        )}
 
-        {/* Admins List */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Current Admins ({admins.length}/5)
-            </CardTitle>
-            <CardDescription>
-              People who can manage {currentClub?.name}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-              </div>
-            ) : admins.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">No admins found</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Added</TableHead>
-                    {isOwner && <TableHead className="text-right">Actions</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {admins.map((admin) => (
-                    <TableRow key={admin.id}>
-                      <TableCell className="font-medium">
-                        {admin.user?.full_name || 'Unknown'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-gray-400" />
-                          {admin.user?.email}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {admin.is_owner ? (
-                          <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500">
-                            <Crown className="h-3 w-3 mr-1" />
-                            Owner
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            <Shield className="h-3 w-3 mr-1" />
-                            Admin
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {admin.verified_via_pin ? 'Via PIN' : 'Invited'}
-                      </TableCell>
-                      {isOwner && (
-                        <TableCell className="text-right">
-                          {!admin.is_owner && admin.user_id !== authUser?.id && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveAdmin(admin.user_id, admin.user?.full_name)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Info Card */}
-        <Card className="border-indigo-200 bg-indigo-50">
-          <CardContent className="p-4">
-            <div className="flex gap-3">
-              <AlertCircle className="h-5 w-5 text-indigo-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-indigo-900">
-                <p className="font-medium mb-1">Admin Permissions:</p>
-                <ul className="list-disc list-inside space-y-1 text-indigo-800">
-                  <li>Create and manage events for the club</li>
-                  <li>View participant data and statistics</li>
-                  <li>Access organizer dashboard</li>
-                  <li>Only the owner can add/remove other admins</li>
+          {/* Admin Info details */}
+          <Card className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5 space-y-3">
+            <div className="flex gap-2">
+              <Shield className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-indigo-900">Admin Privileges</h4>
+                <ul className="text-xs text-indigo-800 list-disc list-inside space-y-1.5 leading-relaxed">
+                  <li>Can host, schedule, and publish events.</li>
+                  <li>Can access real-time event analytics.</li>
+                  <li>Can track participant check-ins via QR.</li>
+                  <li className="font-semibold text-indigo-900">Only the Owner can invite admins, remove admins, or transfer ownership.</li>
                 </ul>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </Card>
+        </div>
+
+        {/* Right Column - Table of Admins */}
+        <div className="md:col-span-2">
+          <Card className="rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden h-full">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Users className="h-5 w-5 text-indigo-500" />
+                Current Administrators
+              </CardTitle>
+              <CardDescription className="text-xs">
+                List of registered admins for this club
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                {admins.map((admin) => {
+                  const user = admin.user;
+                  const adminInitials = (user?.full_name || 'Admin')
+                    .split(' ')
+                    .map((n: string) => n[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2);
+
+                  return (
+                    <div key={admin.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/20 transition">
+                      {/* Left: User identity */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
+                          {adminInitials}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800 truncate">{user?.full_name || 'Anonymous User'}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">ID: {user?.id.slice(0, 8)}...</p>
+                        </div>
+                      </div>
+
+                      {/* Middle: Email & Role Badge */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 flex-1 justify-start md:justify-center min-w-0">
+                        <div className="flex items-center gap-2 text-sm text-slate-600 min-w-0">
+                          <Mail className="h-4 w-4 text-slate-400 shrink-0" />
+                          <span className="truncate">{user?.email}</span>
+                        </div>
+
+                        <div className="shrink-0">
+                          {admin.is_owner ? (
+                            <Badge className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-500 text-white font-semibold border-none rounded-full px-2.5 py-0.5">
+                              <Crown className="h-3 w-3 mr-1" />
+                              Owner
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-none rounded-full px-2.5 py-0.5">
+                              <Shield className="h-3 w-3 mr-1 text-slate-500" />
+                              Admin
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div className="flex items-center gap-2 justify-end shrink-0">
+                        {/* Transfer Ownership Button */}
+                        {!admin.is_owner && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleTransferOwnership(admin.user_id, user?.full_name)}
+                            className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-bold text-xs flex items-center gap-1 h-8 rounded-lg"
+                            title="Transfer ownership of the club to this user"
+                          >
+                            <Crown className="h-3.5 w-3.5 text-amber-500" />
+                            Make Owner
+                          </Button>
+                        )}
+                        
+                        {/* Remove Admin Button */}
+                        {!admin.is_owner && admin.user_id !== authUser?.id && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveAdmin(admin.user_id, user?.full_name)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0 rounded-lg flex items-center justify-center"
+                            title="Remove admin rights"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )
