@@ -118,3 +118,6 @@ export function EventAnalyticsCharts({ dailyRegistrations, demographicData }: Ev
     </div>
   )
 }
+
+export default EventAnalyticsCharts
+

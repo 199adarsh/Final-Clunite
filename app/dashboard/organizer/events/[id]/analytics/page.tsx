@@ -7,8 +7,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Calendar, MapPin, Users, DollarSign, TrendingUp, Eye, UserCheck, Loader2 } from "lucide-react"
 import Link from "next/link"
+import nextDynamic from "next/dynamic"
 import { supabase } from "@/lib/supabase"
-import { EventAnalyticsCharts } from "@/components/analytics/event-detail-charts"
+
+const EventAnalyticsCharts = nextDynamic(
+  () => import("@/components/analytics/event-detail-charts"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="h-[380px] bg-white rounded-xl animate-pulse p-6 border shadow-sm" />
+        <div className="h-[380px] bg-white rounded-xl animate-pulse p-6 border shadow-sm" />
+      </div>
+    ),
+  }
+)
 
 export default function EventAnalyticsPage() {
   const params = useParams()
