@@ -471,10 +471,16 @@ export default function CertificateStudioPage() {
       });
 
       // 2. Insert into Supabase table
-      try {
-        await (supabase as any).from('issued_certificates').insert(rows);
-      } catch (dbErr) {
-        console.warn('Supabase insert warning:', dbErr);
+      const { error: insertError } = await (supabase as any)
+        .from('issued_certificates')
+        .insert(rows);
+
+      if (insertError) {
+        console.error('❌ Supabase insert failed:', insertError);
+        // Still save to localStorage so it appears locally, but warn the organizer
+        toast.error(`Database save failed: ${insertError.message}. Certificates saved locally only.`);
+      } else {
+        console.log('✅ Certificates saved to Supabase successfully');
       }
 
       // 3. Save to localStorage sync backup so it immediately appears in student dashboard
@@ -488,8 +494,9 @@ export default function CertificateStudioPage() {
       }
 
       setIssuedSuccess(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to issue certificates:', err);
+      toast.error(`Failed to issue certificates: ${err?.message || 'Unknown error'}`);
     } finally {
       setIsIssuing(false);
     }

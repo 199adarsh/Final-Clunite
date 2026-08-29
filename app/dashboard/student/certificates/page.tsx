@@ -67,29 +67,30 @@ export default function StudentCertificatesPage() {
     try {
       const certList: StudentCertificate[] = [];
 
-      // 1. Fetch explicitly issued certificates from Supabase table
+      // 1. Fetch explicitly issued certificates via server API route (reliable across all envs)
       try {
-        const { data: explicitCerts } = await (supabase as any)
-          .from('issued_certificates')
-          .select('*, event:events(title), club:clubs(name)')
-          .or(`user_id.eq.${authUser.id},recipient_email.eq.${authUser.email}`);
+        const res = await fetch(
+          `/api/certificates?userId=${authUser.id}&email=${encodeURIComponent(authUser.email || '')}`
+        );
+        const json = await res.json();
+        const explicitCerts = json.data || [];
 
-        if (explicitCerts && explicitCerts.length > 0) {
+        if (explicitCerts.length > 0) {
           explicitCerts.forEach((c: any) => {
             certList.push({
               id: c.id,
               certificate_code: c.certificate_code,
               recipient_name: c.recipient_name,
               issued_at: c.issued_at,
-              event_title: c.event?.title || c.event_title || 'Campus Event',
-              club_name: c.club?.name || c.club_name || 'Campus Organization',
+              event_title: c.event_title || 'Campus Event',
+              club_name: c.club_name || 'Campus Organization',
               template_url: c.template_url,
               template_config: c.template_config,
             });
           });
         }
-      } catch (dbErr) {
-        console.warn('Supabase fetch error:', dbErr);
+      } catch (apiErr) {
+        console.warn('API certificates fetch error:', apiErr);
       }
 
       // 2. Fetch from Local Storage sync layer
