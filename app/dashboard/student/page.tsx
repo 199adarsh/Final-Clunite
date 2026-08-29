@@ -280,20 +280,37 @@ export default function StudentDashboard() {
         if (publishedEventsResult.status === 'rejected') console.warn('Events query failed:', publishedEventsResult.reason);
         if (attendeesResult.status === 'rejected') console.warn('Attendees query failed:', attendeesResult.reason);
 
-        // Fetch certificates separately so a failure doesn't block everything
+        // Fetch certificates via server API route (server-side Supabase, no browser RLS issues)
         let explicitCerts: any[] = [];
         try {
-          const certsData = await withTimeout(
-            supabase
-              .from('issued_certificates' as any)
-              .select('id, certificate_code, issued_at, event_id')
-              .or(`user_id.eq.${authUser!.id},recipient_email.eq.${authUser!.email}`)
-              .order('issued_at', { ascending: false })
-              .then((r) => r.data || [])
+          const certsRes = await withTimeout(
+            fetch(`/api/certificates?userId=${authUser!.id}&email=${encodeURIComponent(authUser!.email || '')}`)
+              .then((r) => r.json())
+              .then((j) => j.data || []),
+            20000 // 20s timeout — server-side calls can be slow on Render cold start
           );
-          explicitCerts = certsData as any[] || [];
+          explicitCerts = certsRes || [];
         } catch (certErr) {
-          console.warn('Could not load certificates (non-fatal):', certErr);
+          console.warn('Could not load certificates via API (non-fatal):', certErr);
+        }
+
+        // Also check localStorage as a fallback (for certs issued on the same device)
+        try {
+          const localRaw = localStorage.getItem('clunite_issued_certificates');
+          if (localRaw) {
+            const localList = JSON.parse(localRaw);
+            const currentEmail = authUser?.email?.toLowerCase();
+            const currentUserId = authUser?.id;
+            localList.forEach((c: any) => {
+              const matchesEmail = c.recipient_email && c.recipient_email.toLowerCase() === currentEmail;
+              const matchesUser = c.user_id && c.user_id === currentUserId;
+              if ((matchesEmail || matchesUser) && !explicitCerts.some((ec) => ec.id === c.id || ec.certificate_code === c.certificate_code)) {
+                explicitCerts.push(c);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Local cert sync warning:', e);
         }
 
         // Process Registrations
@@ -337,38 +354,17 @@ export default function StudentDashboard() {
         });
         setEventAttendees(attendeesMap);
 
-        // Process Certificates
+        // Process Certificates — explicitCerts already includes Supabase + localStorage
         const certCodes = new Set<string>();
         validRegs.forEach((r) => {
           if (r.status === 'attended' && (r.event as any)?.contact_info?.certificates_enabled) {
             certCodes.add(r.id);
           }
         });
-        if (explicitCerts) {
-          explicitCerts.forEach((c: any) => certCodes.add(c.certificate_code || c.id));
-        }
-
-        // Local storage sync check
-        try {
-          const localRaw = localStorage.getItem('clunite_issued_certificates');
-          if (localRaw) {
-            const localList = JSON.parse(localRaw);
-            const currentEmail = authUser?.email?.toLowerCase();
-            const currentUserId = authUser?.id;
-            localList.forEach((c: any) => {
-              const matchesEmail = c.recipient_email && c.recipient_email.toLowerCase() === currentEmail;
-              const matchesUser = c.user_id && c.user_id === currentUserId;
-              if (matchesEmail || matchesUser) {
-                certCodes.add(c.certificate_code || c.id);
-              }
-            });
-          }
-        } catch (e) {
-          console.warn('Local cert sync warning:', e);
-        }
+        explicitCerts.forEach((c: any) => certCodes.add(c.certificate_code || c.id));
 
         const certificatesCount = certCodes.size;
-        setRecentCerts((explicitCerts || []).slice(0, 3));
+        setRecentCerts(explicitCerts.slice(0, 3));
 
         // Compute Live XP
         const totalXp =
