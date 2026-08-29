@@ -1,173 +1,185 @@
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
+"use client"
+
+import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Calendar, MapPin, Users, DollarSign, TrendingUp, Eye, UserCheck } from "lucide-react"
+import { ArrowLeft, Calendar, MapPin, Users, DollarSign, TrendingUp, Eye, UserCheck, Loader2 } from "lucide-react"
 import Link from "next/link"
-import dynamic from "next/dynamic"
+import { supabase } from "@/lib/supabase"
+import { EventAnalyticsCharts } from "@/components/analytics/event-detail-charts"
 
-const EventAnalyticsCharts = dynamic(
-  () => import("@/components/analytics/event-detail-charts").then((mod) => mod.EventAnalyticsCharts),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="h-[380px] bg-white rounded-xl animate-pulse p-6 border shadow-sm" />
-        <div className="h-[380px] bg-white rounded-xl animate-pulse p-6 border shadow-sm" />
-      </div>
-    ),
-  }
-)
+export default function EventAnalyticsPage() {
+  const params = useParams()
+  const eventId = params?.id as string
 
-async function getEventAnalytics(eventId: string) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    },
-  )
+  const [loading, setLoading] = useState(true)
+  const [event, setEvent] = useState<any>(null)
+  const [registrations, setRegistrations] = useState<any[]>([])
+  const [dailyRegistrations, setDailyRegistrations] = useState<any[]>([])
+  const [demographicData, setDemographicData] = useState<any[]>([])
+  const [collegeStats, setCollegeStats] = useState<Map<string, number>>(new Map())
 
-  // Get event details
-  const { data: event } = await supabase.from("events").select("*").eq("id", eventId).single()
+  useEffect(() => {
+    async function loadAnalytics() {
+      if (!eventId) return
+      setLoading(true)
+      try {
+        // Get event details
+        const { data: eventData, error: eventError } = await supabase
+          .from("events")
+          .select("*")
+          .eq("id", eventId)
+          .single()
 
-  // Get registrations with created_at timestamp
-  const { data: registrations } = await supabase
-    .from("event_registrations")
-    .select(`
-      *,
-      registration_data
-    `)
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: true })
+        if (eventError) {
+          console.error("Error fetching event:", eventError)
+        }
+        setEvent(eventData)
 
-  // Generate daily registrations from actual data
-  const dailyRegistrationsMap = new Map()
-  
-  if (registrations && registrations.length > 0) {
-    // Get the date range from first registration to today
-    const firstRegDate = new Date(registrations[0].created_at)
-    const today = new Date()
-    
-    // Initialize all dates in range with 0 registrations
-    for (let d = new Date(firstRegDate); d <= today; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0]
-      dailyRegistrationsMap.set(dateStr, 0)
-    }
-    
-    // Count registrations by date
-    registrations.forEach(reg => {
-      const dateStr = new Date(reg.created_at).toISOString().split('T')[0]
-      const currentCount = dailyRegistrationsMap.get(dateStr) || 0
-      dailyRegistrationsMap.set(dateStr, currentCount + 1)
-    })
-  } else {
-    // Fallback if no registrations
-    const today = new Date()
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(d.getDate() - i)
-      const dateStr = d.toISOString().split('T')[0]
-      dailyRegistrationsMap.set(dateStr, 0)
-    }
-  }
-  
-  // Convert map to array for chart
-  const dailyRegistrations = Array.from(dailyRegistrationsMap.entries()).map(([date, count]) => ({
-    date,
-    registrations: count
-  }))
+        // Get registrations with created_at timestamp
+        const { data: regData, error: regError } = await supabase
+          .from("event_registrations")
+          .select(`
+            *,
+            registration_data
+          `)
+          .eq("event_id", eventId)
+          .order("created_at", { ascending: true })
 
-  // Generate demographic data from registrations
-  const departmentCounts = new Map()
-  const collegeStats = new Map()
-  const departmentColors = {
-    "Computer Science": "#3b82f6",
-    "Engineering": "#10b981",
-    "Technology": "#f59e0b",
-    "Science": "#ef4444",
-    "Other": "#8b5cf6"
-  }
-  
-  if (registrations && registrations.length > 0) {
-    registrations.forEach(reg => {
-      if (reg.registration_data) {
-        // Handle solo registrations
-        if (reg.registration_data.participant_details) {
-          const college = reg.registration_data.participant_details.college || "Other"
-          collegeStats.set(college, (collegeStats.get(college) || 0) + 1)
-          
-          // Infer department from college/course info
-          let department = "Other"
-          const collegeLC = college.toLowerCase()
-          if (collegeLC.includes('engineering') || collegeLC.includes('tech')) {
-            department = "Engineering"
-          } else if (collegeLC.includes('computer') || collegeLC.includes('it')) {
-            department = "Computer Science"
-          } else if (collegeLC.includes('science')) {
-            department = "Science"
+        if (regError) {
+          console.error("Error fetching registrations:", regError)
+        }
+
+        const regs = regData || []
+        setRegistrations(regs)
+
+        // Generate daily registrations from actual data
+        const dailyRegistrationsMap = new Map<string, number>()
+        if (regs.length > 0) {
+          const firstRegDate = new Date(regs[0].created_at)
+          const today = new Date()
+          for (let d = new Date(firstRegDate); d <= today; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split("T")[0]
+            dailyRegistrationsMap.set(dateStr, 0)
           }
-          departmentCounts.set(department, (departmentCounts.get(department) || 0) + 1)
-        }
-        
-        // Handle team registrations
-        if (reg.registration_data.team_members) {
-          reg.registration_data.team_members.forEach((member: any) => {
-            const college = member.college || "Other"
-            collegeStats.set(college, (collegeStats.get(college) || 0) + 1)
-            
-            // Infer department from college/course info
-            let department = "Other"
-            const collegeLC = college.toLowerCase()
-            if (collegeLC.includes('engineering') || collegeLC.includes('tech')) {
-              department = "Engineering"
-            } else if (collegeLC.includes('computer') || collegeLC.includes('it')) {
-              department = "Computer Science"
-            } else if (collegeLC.includes('science')) {
-              department = "Science"
-            }
-            departmentCounts.set(department, (departmentCounts.get(department) || 0) + 1)
+          regs.forEach((reg) => {
+            const dateStr = new Date(reg.created_at).toISOString().split("T")[0]
+            const currentCount = dailyRegistrationsMap.get(dateStr) || 0
+            dailyRegistrationsMap.set(dateStr, currentCount + 1)
           })
+        } else {
+          const today = new Date()
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(today)
+            d.setDate(d.getDate() - i)
+            const dateStr = d.toISOString().split("T")[0]
+            dailyRegistrationsMap.set(dateStr, 0)
+          }
         }
+
+        const daily = Array.from(dailyRegistrationsMap.entries()).map(([date, count]) => ({
+          date,
+          registrations: count,
+        }))
+        setDailyRegistrations(daily)
+
+        // Generate demographic data from registrations
+        const departmentCounts = new Map<string, number>()
+        const cStats = new Map<string, number>()
+        const departmentColors: Record<string, string> = {
+          "Computer Science": "#3b82f6",
+          Engineering: "#10b981",
+          Technology: "#f59e0b",
+          Science: "#ef4444",
+          Other: "#8b5cf6",
+        }
+
+        regs.forEach((reg) => {
+          if (reg.registration_data) {
+            if (reg.registration_data.participant_details) {
+              const college = reg.registration_data.participant_details.college || "Other"
+              cStats.set(college, (cStats.get(college) || 0) + 1)
+              let department = "Other"
+              const collegeLC = college.toLowerCase()
+              if (collegeLC.includes("engineering") || collegeLC.includes("tech")) {
+                department = "Engineering"
+              } else if (collegeLC.includes("computer") || collegeLC.includes("it")) {
+                department = "Computer Science"
+              } else if (collegeLC.includes("science")) {
+                department = "Science"
+              }
+              departmentCounts.set(department, (departmentCounts.get(department) || 0) + 1)
+            }
+            if (reg.registration_data.team_members) {
+              reg.registration_data.team_members.forEach((member: any) => {
+                const college = member.college || "Other"
+                cStats.set(college, (cStats.get(college) || 0) + 1)
+                let department = "Other"
+                const collegeLC = college.toLowerCase()
+                if (collegeLC.includes("engineering") || collegeLC.includes("tech")) {
+                  department = "Engineering"
+                } else if (collegeLC.includes("computer") || collegeLC.includes("it")) {
+                  department = "Computer Science"
+                } else if (collegeLC.includes("science")) {
+                  department = "Science"
+                }
+                departmentCounts.set(department, (departmentCounts.get(department) || 0) + 1)
+              })
+            }
+          }
+        })
+
+        if (departmentCounts.size === 0) {
+          departmentCounts.set("No Data", 1)
+        }
+
+        const demographics = Array.from(departmentCounts.entries()).map(([name, value]) => ({
+          name,
+          value,
+          color: departmentColors[name] || "#8b5cf6",
+        }))
+        setDemographicData(demographics)
+        setCollegeStats(cStats)
+      } catch (err) {
+        console.error("Error loading analytics:", err)
+      } finally {
+        setLoading(false)
       }
-    })
-  }
-  
-  if (departmentCounts.size === 0) {
-    // Fallback if no registrations
-    departmentCounts.set("No Data", 1)
-  }
-  
-  const demographicData = Array.from(departmentCounts.entries()).map(([name, value]) => ({
-    name,
-    value,
-    color: departmentColors[name as keyof typeof departmentColors] || "#8b5cf6"
-  }))
+    }
 
-  return {
-    event,
-    registrations: registrations || [],
-    dailyRegistrations,
-    demographicData,
-    collegeStats,
-  }
-}
+    loadAnalytics()
+  }, [eventId])
 
-export default async function EventAnalyticsPage({ params }: { params: { id: string } }) {
-  const { event, registrations, dailyRegistrations, demographicData, collegeStats } = await getEventAnalytics(params.id)
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <p className="text-sm text-gray-500 font-medium">Loading event analytics...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!event) {
-    return <div>Event not found</div>
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-lg font-semibold text-gray-800">Event not found</p>
+          <Link href="/dashboard/organizer/host/analytics">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Analytics
+            </Button>
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   // Calculate KPI metrics from real data
-  // Count 1 per registration. If solo, 1; if team, also 1.
   const totalRegistrations = registrations.reduce((total, reg) => {
     if (reg.registration_data) {
       if (reg.registration_data.team_members) {
@@ -181,17 +193,6 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
 
   const registrationRate = event.max_participants ? (totalRegistrations / event.max_participants) * 100 : 0
   const revenue = event.entry_fee ? totalRegistrations * event.entry_fee : 0
-  
-  // Calculate engagement metrics
-  const uniqueColleges = collegeStats.size;
-  const averageTeamSize = registrations.reduce((sum, reg) => {
-    if (reg.registration_data?.team_members) {
-      return sum + reg.registration_data.team_members.length;
-    }
-    return sum + 1;
-  }, 0) / registrations.length || 1;
-  
-  // Use actual views from database, fallback to registrations count
   const pageViews = Math.max((event as any).views || 0, totalRegistrations)
 
   return (
@@ -285,73 +286,73 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
               </CardContent>
             </Card>
 
-          <Card className="border-0 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-xl text-green-600 bg-green-50">
-                  <TrendingUp className="h-6 w-6" />
+            <Card className="border-0 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 rounded-xl text-green-600 bg-green-50">
+                    <TrendingUp className="h-6 w-6" />
+                  </div>
+                  <Badge className="bg-green-50 text-green-700 border-green-200 px-2 py-1 text-xs font-semibold">
+                    +{Math.round(registrationRate * 0.05)}%
+                  </Badge>
                 </div>
-                <Badge className="bg-green-50 text-green-700 border-green-200 px-2 py-1 text-xs font-semibold">
-                  +{Math.round(registrationRate * 0.05)}%
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Registration Rate</p>
-                <p className="text-3xl font-black text-gray-900">{registrationRate.toFixed(1)}%</p>
-                <div className="flex items-center text-sm">
-                  <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
-                  <span className="text-green-600 font-medium">Above average</span>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Registration Rate</p>
+                  <p className="text-3xl font-black text-gray-900">{registrationRate.toFixed(1)}%</p>
+                  <div className="flex items-center text-sm">
+                    <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
+                    <span className="text-green-600 font-medium">Above average</span>
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium">Of total page views</p>
                 </div>
-                <p className="text-xs text-gray-500 font-medium">Of total page views</p>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card className="border-0 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-xl text-purple-600 bg-purple-50">
-                  <DollarSign className="h-6 w-6" />
+            <Card className="border-0 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 rounded-xl text-purple-600 bg-purple-50">
+                    <DollarSign className="h-6 w-6" />
+                  </div>
+                  <Badge className="bg-green-50 text-green-700 border-green-200 px-2 py-1 text-xs font-semibold">
+                    +12%
+                  </Badge>
                 </div>
-                <Badge className="bg-green-50 text-green-700 border-green-200 px-2 py-1 text-xs font-semibold">
-                  +12%
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Revenue</p>
-                <p className="text-3xl font-black text-gray-900">${revenue}</p>
-                <div className="flex items-center text-sm">
-                  <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
-                  <span className="text-green-600 font-medium">Growing steadily</span>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Revenue</p>
+                  <p className="text-3xl font-black text-gray-900">${revenue}</p>
+                  <div className="flex items-center text-sm">
+                    <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
+                    <span className="text-green-600 font-medium">Growing steadily</span>
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium">From ticket sales</p>
                 </div>
-                <p className="text-xs text-gray-500 font-medium">From ticket sales</p>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card className="border-0 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-xl text-orange-600 bg-orange-50">
-                  <Eye className="h-6 w-6" />
+            <Card className="border-0 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 rounded-xl text-orange-600 bg-orange-50">
+                    <Eye className="h-6 w-6" />
+                  </div>
+                  <Badge className="bg-green-50 text-green-700 border-green-200 px-2 py-1 text-xs font-semibold">
+                    +18%
+                  </Badge>
                 </div>
-                <Badge className="bg-green-50 text-green-700 border-green-200 px-2 py-1 text-xs font-semibold">
-                  +18%
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Page Views</p>
-                <p className="text-3xl font-black text-gray-900">{pageViews.toLocaleString()}</p>
-                <div className="flex items-center text-sm">
-                  <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
-                  <span className="text-green-600 font-medium">High visibility</span>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Page Views</p>
+                  <p className="text-3xl font-black text-gray-900">{pageViews.toLocaleString()}</p>
+                  <div className="flex items-center text-sm">
+                    <TrendingUp className="h-4 w-4 mr-1 text-green-600" />
+                    <span className="text-green-600 font-medium">High visibility</span>
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium">Last 30 days</p>
                 </div>
-                <p className="text-xs text-gray-500 font-medium">Last 30 days</p>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
 
         {/* Charts */}
         <EventAnalyticsCharts
