@@ -257,7 +257,7 @@ export default function SignupPage() {
                       placeholder="e.g. Rahul Sharma"
                       value={formData.fullName}
                       onChange={(e) =>
-                        setFormData({ ...formData, fullName: e.target.value })
+                        setFormData((prev) => ({ ...prev, fullName: e.target.value }))
                       }
                       required
                       autoComplete="name"
@@ -284,7 +284,7 @@ export default function SignupPage() {
                       placeholder="student@college.edu"
                       value={formData.email}
                       onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
+                        setFormData((prev) => ({ ...prev, email: e.target.value }))
                       }
                       required
                       autoComplete="email"
@@ -306,7 +306,7 @@ export default function SignupPage() {
                   id="college"
                   placeholder="Search and select your college..."
                   value={formData.college}
-                  onChange={(val) => setFormData({ ...formData, college: val })}
+                  onChange={(val) => setFormData((prev) => ({ ...prev, college: val }))}
                   required
                   leftIcon={
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 z-10">
@@ -334,7 +334,7 @@ export default function SignupPage() {
                     id="branch"
                     placeholder="Search or pick your branch..."
                     value={formData.branch}
-                    onChange={(val) => setFormData({ ...formData, branch: val })}
+                    onChange={(val) => setFormData((prev) => ({ ...prev, branch: val }))}
                     className="h-11 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 rounded-xl focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm"
                   />
                 </div>
@@ -349,7 +349,7 @@ export default function SignupPage() {
                   </Label>
                   <Select
                     value={formData.gender}
-                    onValueChange={(val) => setFormData({ ...formData, gender: val })}
+                    onValueChange={(val) => setFormData((prev) => ({ ...prev, gender: val }))}
                     required
                   >
                     <SelectTrigger className="h-11 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border-slate-200 text-slate-900 rounded-xl focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm">
@@ -387,7 +387,7 @@ export default function SignupPage() {
                       placeholder="Min. 8 chars"
                       value={formData.password}
                       onChange={(e) =>
-                        setFormData({ ...formData, password: e.target.value })
+                        setFormData((prev) => ({ ...prev, password: e.target.value }))
                       }
                       required
                       minLength={8}
@@ -427,10 +427,10 @@ export default function SignupPage() {
                       placeholder="Re-enter password"
                       value={formData.confirmPassword}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
+                        setFormData((prev) => ({
+                          ...prev,
                           confirmPassword: e.target.value
-                        })
+                        }))
                       }
                       required
                       minLength={8}
