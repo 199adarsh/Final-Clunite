@@ -1,7 +1,6 @@
 import type React from 'react';
 import type { Metadata } from 'next';
 import { Inter, Poppins } from 'next/font/google';
-import { Analytics } from '@vercel/analytics/next';
 import { Suspense } from 'react';
 import { AuthProvider } from '@/lib/auth-context';
 import { Toaster } from 'sonner';
@@ -48,7 +47,6 @@ export default function RootLayout({
             }}
           />
         </AuthProvider>
-        <Analytics />
       </body>
     </html>
   );

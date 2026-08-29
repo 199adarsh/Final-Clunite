@@ -184,7 +184,6 @@ export default function StudentDashboard() {
         const [
           { data: regs },
           { data: memberships },
-          { data: explicitCerts },
           { data: publishedEvents },
           { data: recentAttendeesData }
         ] = await Promise.all([
@@ -225,12 +224,6 @@ export default function StudentDashboard() {
             `)
             .eq('user_id', authUser!.id),
 
-          (supabase as any)
-            .from('issued_certificates')
-            .select('id, certificate_code, issued_at, event_id')
-            .or(`user_id.eq.${authUser!.id},recipient_email.eq.${authUser!.email}`)
-            .order('issued_at', { ascending: false }),
-
           supabase
             .from('events')
             .select(`
@@ -252,6 +245,19 @@ export default function StudentDashboard() {
             .in('status', ['registered', 'attended'])
             .limit(300)
         ]);
+
+        // Fetch certificates separately so a failure doesn't block everything
+        let explicitCerts: any[] = [];
+        try {
+          const { data: certsData } = await supabase
+            .from('issued_certificates' as any)
+            .select('id, certificate_code, issued_at, event_id')
+            .or(`user_id.eq.${authUser!.id},recipient_email.eq.${authUser!.email}`)
+            .order('issued_at', { ascending: false });
+          explicitCerts = certsData || [];
+        } catch (certErr) {
+          console.warn('Could not load certificates (non-fatal):', certErr);
+        }
 
         // Process Registrations
         const validRegs = (regs || []).filter((r) => r.event);
