@@ -174,87 +174,124 @@ export default function StudentDashboard() {
       return;
     }
 
+    // Safety: show dashboard after 12s no matter what (handles hanging queries on Render)
+    const safetyTimer = setTimeout(() => {
+      console.warn('Dashboard fetch timeout — forcing render with available data');
+      setLoading(false);
+    }, 12000);
+
+    // Helper: race any promise against a per-query timeout
+    function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms)
+        ),
+      ]);
+    }
+
     async function fetchDashboardData() {
       try {
         setLoading(true);
-        const dbUser = await getUserFromDatabase(authUser!.id);
-        setUserData(dbUser);
 
-        // Fetch parallel data from Supabase
-        const [
-          { data: regs },
-          { data: memberships },
-          { data: publishedEvents },
-          { data: recentAttendeesData }
-        ] = await Promise.all([
-          supabase
-            .from('event_registrations')
-            .select(`
-              id,
-              status,
-              registered_at,
-              event:events(
-                id,
-                title,
-                description,
-                start_date,
-                end_date,
-                registration_deadline,
-                venue,
-                location,
-                mode,
-                entry_fee,
-                prize_pool,
-                image_url,
-                status,
-                college,
-                contact_info,
-                club:clubs(id, name, logo_url)
-              )
-            `)
-            .eq('user_id', authUser!.id)
-            .order('registered_at', { ascending: false }),
+        // Set name immediately from auth metadata so banner shows fast
+        if (authUser?.user_metadata?.full_name) {
+          setUserData({
+            full_name: authUser.user_metadata.full_name,
+            college: authUser.user_metadata.college || '',
+            branch: authUser.user_metadata.branch || '',
+          });
+        }
 
-          supabase
-            .from('club_memberships')
-            .select(`
-              id,
-              role,
-              club:clubs(id, name, logo_url, category, college)
-            `)
-            .eq('user_id', authUser!.id),
+        // Fetch user profile
+        let dbUser: any = null;
+        try {
+          dbUser = await withTimeout(getUserFromDatabase(authUser!.id));
+          if (dbUser) setUserData(dbUser);
+        } catch (e) {
+          console.warn('User profile fetch timed out, using auth metadata');
+        }
 
-          supabase
-            .from('events')
-            .select(`
-              *,
-              club:clubs(*)
-            `)
-            .eq('status', 'published')
-            .order('start_date', { ascending: true }),
+        // Fetch all dashboard data — each query races against 8s timeout
+        const [regsResult, membershipsResult, publishedEventsResult, attendeesResult] =
+          await Promise.allSettled([
+            withTimeout(
+              supabase
+                .from('event_registrations')
+                .select(`
+                  id,
+                  status,
+                  registered_at,
+                  event:events(
+                    id,
+                    title,
+                    description,
+                    start_date,
+                    end_date,
+                    registration_deadline,
+                    venue,
+                    location,
+                    mode,
+                    entry_fee,
+                    prize_pool,
+                    image_url,
+                    status,
+                    college,
+                    contact_info,
+                    club:clubs(id, name, logo_url)
+                  )
+                `)
+                .eq('user_id', authUser!.id)
+                .order('registered_at', { ascending: false })
+                .then((r) => r.data || [])
+            ),
+            withTimeout(
+              supabase
+                .from('club_memberships')
+                .select(`id, role, club:clubs(id, name, logo_url, category, college)`)
+                .eq('user_id', authUser!.id)
+                .then((r) => r.data || [])
+            ),
+            withTimeout(
+              supabase
+                .from('events')
+                .select(`*, club:clubs(*)`)
+                .eq('status', 'published')
+                .order('start_date', { ascending: true })
+                .then((r) => r.data || [])
+            ),
+            withTimeout(
+              supabase
+                .from('event_registrations')
+                .select(`id, event_id, user_id, status, user:users(id, full_name, college, branch)`)
+                .in('status', ['registered', 'attended'])
+                .limit(300)
+                .then((r) => r.data || [])
+            ),
+          ]);
 
-          supabase
-            .from('event_registrations')
-            .select(`
-              id,
-              event_id,
-              user_id,
-              status,
-              user:users(id, full_name, college, branch)
-            `)
-            .in('status', ['registered', 'attended'])
-            .limit(300)
-        ]);
+        const regs = regsResult.status === 'fulfilled' ? regsResult.value as any[] : [];
+        const memberships = membershipsResult.status === 'fulfilled' ? membershipsResult.value as any[] : [];
+        const publishedEvents = publishedEventsResult.status === 'fulfilled' ? publishedEventsResult.value as any[] : [];
+        const recentAttendeesData = attendeesResult.status === 'fulfilled' ? attendeesResult.value as any[] : [];
+
+        if (regsResult.status === 'rejected') console.warn('Registrations query failed:', regsResult.reason);
+        if (membershipsResult.status === 'rejected') console.warn('Memberships query failed:', membershipsResult.reason);
+        if (publishedEventsResult.status === 'rejected') console.warn('Events query failed:', publishedEventsResult.reason);
+        if (attendeesResult.status === 'rejected') console.warn('Attendees query failed:', attendeesResult.reason);
 
         // Fetch certificates separately so a failure doesn't block everything
         let explicitCerts: any[] = [];
         try {
-          const { data: certsData } = await supabase
-            .from('issued_certificates' as any)
-            .select('id, certificate_code, issued_at, event_id')
-            .or(`user_id.eq.${authUser!.id},recipient_email.eq.${authUser!.email}`)
-            .order('issued_at', { ascending: false });
-          explicitCerts = certsData || [];
+          const certsData = await withTimeout(
+            supabase
+              .from('issued_certificates' as any)
+              .select('id, certificate_code, issued_at, event_id')
+              .or(`user_id.eq.${authUser!.id},recipient_email.eq.${authUser!.email}`)
+              .order('issued_at', { ascending: false })
+              .then((r) => r.data || [])
+          );
+          explicitCerts = certsData as any[] || [];
         } catch (certErr) {
           console.warn('Could not load certificates (non-fatal):', certErr);
         }
@@ -352,8 +389,8 @@ export default function StudentDashboard() {
         const registeredEventIds = new Set(validRegs.map((r) => (r.event as any)?.id));
         const computedRecommendations = computeEventRecommendations(
           publishedEvents || [],
-          dbUser?.college || '',
-          dbUser?.branch || '',
+          dbUser?.college || authUser?.user_metadata?.college || '',
+          dbUser?.branch || authUser?.user_metadata?.branch || '',
           joinedClubIds,
           registeredEventIds
         );
@@ -362,11 +399,14 @@ export default function StudentDashboard() {
       } catch (err) {
         console.error('Error fetching student dashboard data:', err);
       } finally {
+        clearTimeout(safetyTimer);
         setLoading(false);
       }
     }
 
     fetchDashboardData();
+
+    return () => clearTimeout(safetyTimer);
   }, [authUser, authLoading, router]);
 
   // Find nearest upcoming registered event for the active pass
