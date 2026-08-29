@@ -5,7 +5,20 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Calendar, MapPin, Users, DollarSign, TrendingUp, Eye, UserCheck } from "lucide-react"
 import Link from "next/link"
-import { EventAnalyticsCharts } from "@/components/analytics/event-detail-charts"
+import dynamic from "next/dynamic"
+
+const EventAnalyticsCharts = dynamic(
+  () => import("@/components/analytics/event-detail-charts").then((mod) => mod.EventAnalyticsCharts),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="h-[380px] bg-white rounded-xl animate-pulse p-6 border shadow-sm" />
+        <div className="h-[380px] bg-white rounded-xl animate-pulse p-6 border shadow-sm" />
+      </div>
+    ),
+  }
+)
 
 async function getEventAnalytics(eventId: string) {
   const cookieStore = cookies()
