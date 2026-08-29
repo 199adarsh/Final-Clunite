@@ -30,9 +30,10 @@
     "type-check": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": "20.x",
     "npm": ">=9.0.0"
   },
+  "packageManager": "pnpm@9.15.9",
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "latest",
