@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
@@ -34,6 +34,13 @@ export default function LoginPage() {
     email: "",
     password: ""
   })
+  const { user } = useAuth()
+
+  useEffect(() => {
+    if (user && !loading) {
+      router.replace("/dashboard/student")
+    }
+  }, [user, loading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

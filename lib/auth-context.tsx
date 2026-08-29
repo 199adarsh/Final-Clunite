@@ -136,28 +136,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        // Get user from database to check gender and update avatar if needed
-        const { data: dbUser } = await supabase
-          .from('users')
-          .select('gender, avatar_url')
-          .eq('id', data.user.id)
-          .single()
-
-        // If user has gender but no avatar_url, update it based on gender
-        if (dbUser?.gender && !dbUser.avatar_url) {
-          const genderBasedAvatar = getAvatarUrlByGender(dbUser.gender)
-          if (genderBasedAvatar) {
-            await supabase
+        // Run database syncing in the background so it doesn't block login
+        ;(async () => {
+          try {
+            const { data: dbUser } = await supabase
               .from('users')
-              .update({ avatar_url: genderBasedAvatar })
+              .select('gender, avatar_url')
               .eq('id', data.user.id)
-          }
-        }
+              .single()
 
-        // Ensure user exists in database (non-blocking - don't wait)
-        ensureUserInDatabase(data.user).catch(err => {
-          console.error('Background user sync failed:', err)
-        })
+            if (dbUser?.gender && !dbUser.avatar_url) {
+              const genderBasedAvatar = getAvatarUrlByGender(dbUser.gender)
+              if (genderBasedAvatar) {
+                await supabase
+                  .from('users')
+                  .update({ avatar_url: genderBasedAvatar })
+                  .eq('id', data.user.id)
+              }
+            }
+          } catch (err) {
+            console.error('Avatar check failed:', err)
+          }
+
+          // Ensure user exists in database
+          try {
+            await ensureUserInDatabase(data.user)
+          } catch (err) {
+            console.error('Background user sync failed:', err)
+          }
+        })()
       }
 
       return { error: null }
