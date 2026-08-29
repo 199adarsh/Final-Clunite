@@ -391,7 +391,7 @@ export default function StudentCertificatesPage() {
                         selectedCert.template_config?.role || 'Participant',
                         {
                           recipientName: selectedCert.recipient_name,
-                          studentCollege: (selectedCert as any).template_config?.studentCollege || (selectedCert as any).student_college || (user as any)?.college || "DKTE's Textile and Engineering Institute, Ichalkaranji",
+                          studentCollege: (selectedCert as any).template_config?.studentCollege || (selectedCert as any).student_college || (authUser as any)?.college || authUser?.user_metadata?.college || "DKTE's Textile and Engineering Institute, Ichalkaranji",
                           teamName: (selectedCert as any).template_config?.teamName || (selectedCert as any).team_name,
                           isTeam: (selectedCert as any).template_config?.isTeam || !!(selectedCert as any).template_config?.teamName || !!(selectedCert as any).team_name,
                           hostCollege: selectedCert.club_name || "DKTE Society's Textile & Engineering Institute",
